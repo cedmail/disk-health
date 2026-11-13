@@ -275,22 +275,39 @@ for _ in 1 2 3 4 5; do
   launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1 || break
   sleep 1
 done
+# setup means "run it": clear a launchctl disable left by an older install, then start it now
+# (a loaded job can otherwise sit at "runs = 0" until the next login).
+launchctl enable "gui/$UID_NUM/$LABEL" 2>/dev/null || true
 launchctl bootstrap "gui/$UID_NUM" "$PLIST"
-say "Loaded $LABEL"
+launchctl kickstart "gui/$UID_NUM/$LABEL" 2>/dev/null || true
+say "Loaded and started $LABEL"
 
 step "Waiting for the service"
 OK=0
-for _ in $(seq 1 20); do
-  if curl -sf "$URL/api/status" >/dev/null 2>&1; then OK=1; break; fi
-  sleep 0.5
+printf 'Waiting for %s ' "$URL"
+for _ in $(seq 1 120); do
+  if curl -sf --max-time 2 "$URL/api/status" >/dev/null 2>&1; then OK=1; break; fi
+  printf '.'; sleep 0.5
 done
+echo
 if [ "$OK" -eq 1 ]; then
   say "Service is up: $(curl -sf "$URL/api/status" | "$PYTHON" -c 'import json,sys
 d=json.load(sys.stdin); print("%s free (%s%%), status %s" % (d.get("free_h", "?"), d.get("free_pct", "?"), d.get("level", "?")))' 2>/dev/null || echo ok)"
 else
-  say "The service did not answer on $URL within 10s."
-  say "Check the log: tail -50 \"$LOG_DIR/agent.log\""
-  say "Is port $PORT already in use? lsof -nP -iTCP:$PORT -sTCP:LISTEN"
+  say "The service did not answer on $URL within 60s."
+  INFO="$(launchctl print "gui/$UID_NUM/$LABEL" 2>/dev/null || true)"
+  RUNS="$(printf '%s\n' "$INFO" | sed -n 's/^[[:space:]]*runs = //p' | head -1)"
+  if launchctl print-disabled "gui/$UID_NUM" 2>/dev/null | grep -Eq "\"$LABEL\" => (disabled|true)"; then
+    say "macOS has the service disabled. Turn it on with:"
+    say "  launchctl enable gui/$UID_NUM/$LABEL && disk-health restart"
+  elif [ "${RUNS:-0}" = "0" ]; then
+    say "launchd loaded it but never started it. Usually it is switched off as a background item:"
+    say "  System Settings > General > Login Items & Extensions > Allow in the Background > DiskHealth (on)"
+    say "then: disk-health restart   (or ./restart.sh)"
+  else
+    say "It started but isn't answering. Check the log: tail -50 \"$LOG_DIR/agent.log\""
+    say "Is port $PORT already in use? lsof -nP -iTCP:$PORT -sTCP:LISTEN"
+  fi
 fi
 
 # ------------------------------------------------------------------ next steps
