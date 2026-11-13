@@ -10,8 +10,8 @@ class DiskHealth < Formula
   homepage "https://github.com/cedmail/disk-health"
   url "https://github.com/cedmail/disk-health.git",
       using:    :git,
-      tag:      "v1.2.0",
-      revision: "5d6464aa4e2318bdb384575008ba53262499e9b8"
+      tag:      "v1.3.0",
+      revision: "09a228638a667538884b6cd6d2874be8413b0d2e"
   license "MIT"
   head "https://github.com/cedmail/disk-health.git", branch: "main"
 
