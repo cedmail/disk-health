@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+/.venv/
+/venv/
+
+# Local runtime data (lives in ~/Library/Application Support/disk-health; never commit a token or DB)
+/config.json
+*.sqlite3
+*.sqlite3-*
+*.log
+token
+
+# Build / release output (make-release.sh, install.sh)
+/dist/
+/RELEASE
+/launcher/DiskHealth
+/launcher/DiskHealth.sha256
+*.plist.tmp
+*.bak
+
+# macOS, editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Claude working files
+/Claude outputs/

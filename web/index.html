@@ -1,0 +1,1018 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Disk Health</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='6' width='26' height='20' rx='4' fill='%232a78d6'/%3E%3Ccircle cx='23' cy='20' r='2.4' fill='white'/%3E%3Crect x='7' y='11' width='14' height='2.4' rx='1.2' fill='white'/%3E%3C/svg%3E">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #f6f6f4; --surface: #fcfcfb; --surface-2: #f0efec; --border: #e3e2de;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #6f6d68;
+  --accent: #2a78d6; --accent-soft: #cde2fb; --accent-ink: #184f95;
+  --good: #0ca30c; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+  --good-ink: #006300; --critical-ink: #a72323; --warning-ink: #8a5a00;
+  --grid: #e9e8e4; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #2f2f2c;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85;
+    --accent: #3987e5; --accent-soft: #1c3a5e; --accent-ink: #9ec5f4;
+    --good-ink: #5fd35f; --critical-ink: #f08a8a; --warning-ink: #fab219;
+    --grid: #2a2a28; --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #121211; --surface: #1a1a19; --surface-2: #232321; --border: #2f2f2c;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8d8c85;
+  --accent: #3987e5; --accent-soft: #1c3a5e; --accent-ink: #9ec5f4;
+  --good-ink: #5fd35f; --critical-ink: #f08a8a; --warning-ink: #fab219;
+  --grid: #2a2a28; --shadow: none;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 72px; }
+@media (max-width: 700px) { html { scroll-padding-top: 104px; } }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+a { color: var(--accent); }
+button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 6px 12px; transition: background .15s, border-color .15s; }
+button:hover { background: var(--surface-2); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { filter: brightness(1.08); }
+button.danger { color: var(--critical-ink); }
+button.primary.destructive { background: var(--critical); border-color: var(--critical); }
+button:focus-visible, a:focus-visible, .tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button.small { padding: 3px 9px; font-size: 12.5px; white-space: nowrap; }
+button:disabled { opacity: .5; cursor: default; }
+.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dim { color: var(--muted); }
+
+header.top { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--border); }
+.top-inner { max-width: 1280px; margin: 0 auto; padding: 10px 24px; display: flex; align-items: center; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 650; font-size: 15px; white-space: nowrap; }
+.brand svg { width: 22px; height: 22px; }
+nav.sections { display: flex; gap: 2px; overflow-x: auto; flex: 1; scrollbar-width: none; }
+nav.sections a { color: var(--text-2); text-decoration: none; padding: 6px 7px; border-radius: 7px; white-space: nowrap; font-size: 13px; }
+nav.sections a:hover { background: var(--surface-2); color: var(--text); }
+.top-actions { display: flex; gap: 8px; align-items: center; }
+.last-scan { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+
+main { max-width: 1280px; margin: 0 auto; padding: 20px 24px 80px; display: grid; gap: 20px; }
+main > *, .grid-2 > * { min-width: 0; }
+section.card, .card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+section.card { padding: 18px 20px 20px; }
+.card-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.card-head h2 { font-size: 16px; margin: 0; font-weight: 650; }
+.card-head .sub { color: var(--muted); font-size: 13px; }
+.card-head .spacer { flex: 1; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-2.wide-left { grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+@media (max-width: 980px) { .grid-2, .grid-2.wide-left { grid-template-columns: 1fr; } }
+
+.alerts { display: grid; gap: 8px; }
+/* ---------- accordion panels: compact summaries, one expanded at a time ---------- */
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+@media (max-width: 1000px) { .panels { grid-template-columns: minmax(0, 1fr); } }
+section.card.panel { padding: 14px 18px; scroll-margin-top: 110px; }
+.panel.open { grid-column: 1 / -1; padding: 18px 20px 20px; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+.panel > .card-head { cursor: pointer; margin-bottom: 0; user-select: none; }
+.panel.open > .card-head { margin-bottom: 14px; }
+.panel > .card-head h2::before { content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 9px 2px 2px; border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted); transform: rotate(-45deg); transition: transform .15s; }
+.panel.open > .card-head h2::before { transform: rotate(45deg); margin-bottom: 4px; }
+.panel:not(.open) > .panel-full { display: none; }
+.panel.open > .panel-summary { display: none; }
+.panel:not(.open) > .card-head .filter-in,
+.panel:not(.open) > .card-head .seg, .panel:not(.open) > .card-head button.small, .panel:not(.open) > .card-head .sub { display: none; }
+.panel.open > .panel-full { max-height: calc(100vh - 190px); overflow: auto; overscroll-behavior: contain; }
+.panel.open > .panel-full.no-scroll { max-height: none; overflow: visible; }
+.panel-summary { margin-top: 10px; display: grid; gap: 8px; }
+.ps-stats { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.ps-stat { display: flex; flex-direction: column; min-width: 0; }
+.ps-stat b { font-size: 18px; font-weight: 650; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.ps-stat span { font-size: 11.5px; color: var(--muted); }
+.ps-stat.warn b { color: var(--critical-ink); } .ps-stat.good b { color: var(--good-ink); }
+.ps-lines { display: grid; gap: 3px; font-size: 12.5px; }
+.ps-line { display: flex; gap: 10px; min-width: 0; }
+.ps-line .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); font-family: var(--mono); font-size: 12px; }
+.ps-line .v { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ps-empty { font-size: 12.5px; color: var(--muted); }
+.filter-in { font: inherit; font-size: 12.5px; padding: 4px 9px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); width: 160px; }
+.kpis { margin-bottom: 0; }
+.chart-wrap svg { height: 150px !important; }
+.kpi { padding: 12px 16px !important; }
+.kpi .value { font-size: 22px !important; }
+.kpi.hero .value { font-size: 28px !important; }
+#git .seg { margin-right: 4px; }
+.tag.good { color: var(--good-ink); }
+.git-name a { color: var(--text); text-decoration: none; font-weight: 600; }
+.git-name a:hover { color: var(--accent); text-decoration: underline; }
+.cf-opt { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 13px; cursor: pointer; }
+.cf-opt input { margin-top: 3px; }
+#toast { position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 20px); background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 9px; font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; z-index: 40; max-width: calc(100vw - 32px); }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+#toast code { font-family: var(--mono); }
+.alias-row { display: flex; align-items: center; gap: 10px; margin: -4px 0 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); }
+.alias-row code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 4px 8px; border-radius: 6px; color: var(--text); overflow-wrap: anywhere; }
+#scanProgress { padding: 18px 20px; border-color: var(--accent); }
+.sp-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+.sp-others { margin-top: 12px; display: grid; gap: 6px; }
+.sp-other { display: flex; gap: 8px; align-items: center; font-size: 12.5px; padding: 6px 10px; background: var(--surface-2); border-radius: 8px; }
+.sp-other .note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
+.unq { color: var(--muted); text-decoration: none; margin-left: 2px; }
+.unq:hover { color: var(--critical-ink); }
+.panel-loading { color: var(--muted); padding: 22px 0; text-align: center; }
+.sp-queue { font-size: 12.5px; color: var(--muted); }
+#miniProg { display: none; border-top: 1px solid var(--border); }
+#miniProg.on { display: block; }
+#miniProg .in { max-width: 1280px; margin: 0 auto; padding: 6px 24px 8px; display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+#miniProg .t { font-weight: 600; white-space: nowrap; }
+#miniProg .cur { font-family: var(--mono); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; direction: rtl; text-align: left; }
+#miniProg .mb { width: 140px; height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; flex: none; position: relative; }
+#miniProg .mb > i { display: block; height: 100%; background: var(--accent); transition: width .6s ease; }
+#miniProg .mb.indet > i { width: 30% !important; animation: indet 1.4s ease-in-out infinite; }
+#miniProg button { flex: none; }
+@media (max-width: 700px) { #miniProg .in { padding: 6px 16px 8px; } #miniProg .mb { width: 70px; } }
+.logs-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.logs-bar select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text); max-width: 100%; }
+#logView { margin: 0; height: 420px; overflow: auto; font: 12px/1.5 var(--mono); background: var(--surface-2); border-radius: 10px; padding: 10px 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+#logView .err { color: var(--critical-ink); }
+#logView .cmd { color: var(--accent-ink); font-weight: 600; }
+#scanProgress[hidden] { display: none; }
+.sp-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sp-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+.sp-steps { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.sp-step { font-size: 12px; padding: 2px 9px; border-radius: 99px; background: var(--surface-2); color: var(--muted); white-space: nowrap; }
+.sp-step.on { background: var(--accent-soft); color: var(--accent-ink); font-weight: 600; }
+.sp-step.done { color: var(--good-ink); }
+.sp-bar { height: 10px; border-radius: 5px; background: var(--surface-2); overflow: hidden; margin: 14px 0 8px; position: relative; }
+.sp-bar > i { display: block; height: 100%; background: var(--accent); border-radius: 5px; transition: width .6s ease; }
+.sp-bar.indet > i { width: 30% !important; animation: indet 1.4s ease-in-out infinite; }
+@keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.sp-line { display: flex; gap: 18px; flex-wrap: wrap; color: var(--text-2); font-size: 13px; }
+.sp-line b { color: var(--text); font-weight: 650; }
+.sp-current { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-top: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.sp-big { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px 18px; }
+.sp-big .row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 8px; font-size: 12.5px; align-items: center; }
+.sp-big .row .n { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sp-big .row .bar { grid-column: 1 / -1; height: 4px; }
+.sp-big-title { font-size: 12px; color: var(--muted); margin-top: 14px; font-weight: 600; }
+.alerts-more { justify-self: start; }
+.alert { display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); border-left-width: 4px; }
+.alert .lvl { font-size: 11.5px; font-weight: 650; text-transform: uppercase; letter-spacing: .04em; }
+.alert.critical { border-left-color: var(--critical); } .alert.critical .lvl { color: var(--critical-ink); }
+.alert.warning { border-left-color: var(--warning); } .alert.warning .lvl { color: var(--warning-ink); }
+.alert.notice, .alert.info { border-left-color: var(--accent); } .alert.notice .lvl, .alert.info .lvl { color: var(--accent-ink); }
+.alert .lvl { white-space: nowrap; flex: none; }
+.alert .msg { min-width: 0; overflow-wrap: anywhere; }
+.alert .acts { margin-left: auto; display: flex; gap: 10px; align-items: center; flex: none; }
+.brand .ver { font-family: inherit; font-size: 11px; font-weight: 500; color: var(--muted); margin-left: 6px; background: none; border: 0; padding: 0; cursor: pointer; }
+.brand .ver:hover { color: var(--accent); text-decoration: underline; }
+.alert a { margin-left: auto; font-size: 13px; text-decoration: none; white-space: nowrap; flex: none; }
+
+.kpis { display: grid; grid-template-columns: 1.4fr repeat(4, 1fr); gap: 14px; }
+@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(2, 1fr); } .kpi.hero { grid-column: span 2; } }
+.kpi { padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit; }
+a.kpi:hover { border-color: var(--accent); }
+.kpi .label { color: var(--text-2); font-size: 12.5px; font-weight: 550; }
+.kpi .value { font-size: 26px; font-weight: 650; letter-spacing: -.01em; }
+.kpi.hero .value { font-size: 34px; }
+.kpi .hint { color: var(--muted); font-size: 12.5px; }
+.meter { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin-top: 8px; display: flex; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.delta-up { color: var(--critical-ink); } .delta-down { color: var(--good-ink); }
+
+.chart-wrap { position: relative; }
+.chart-wrap svg { display: block; width: 100%; height: 220px; overflow: visible; }
+.chart-wrap svg text { font-variant-numeric: tabular-nums; }
+.chart-wrap .halo { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.tooltip { position: absolute; top: 0; left: 0; pointer-events: none; background: var(--text); color: var(--bg); padding: 6px 9px; border-radius: 7px; font-size: 12px; white-space: nowrap; opacity: 0; transition: opacity .1s; }
+.tooltip b { font-weight: 650; }
+.empty { color: var(--muted); padding: 22px 0; text-align: center; }
+
+.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; padding: 0 4px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+td { padding: 8px; border-bottom: 1px solid var(--grid); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+td.r, th.r { text-align: right; }
+.path { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.path .dim { color: var(--muted); }
+td.pcell { width: 100%; max-width: 0; }
+.pc .leaf { font-family: var(--mono); font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc .parent { font-family: var(--mono); font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.pc .tags { margin-top: 3px; display: flex; gap: 4px; flex-wrap: wrap; }
+.tag { display: inline-block; font-size: 11.5px; padding: 1px 7px; border-radius: 99px; background: var(--surface-2); color: var(--text-2); white-space: nowrap; }
+.tag.safe { color: var(--good-ink); } .tag.rebuild { color: var(--accent-ink); } .tag.redownload { color: var(--warning-ink); }
+.tag.warn { color: var(--critical-ink); }
+.note { color: var(--muted); font-size: 12.5px; }
+.bar { height: 6px; border-radius: 3px; background: var(--accent); min-width: 2px; }
+.bar-cell { width: 28%; }
+.actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: nowrap; }
+.m-only { display: none; }
+button .m-only { display: none !important; }
+.m-only.tag { margin-top: 4px; width: max-content; }
+.more { display: flex; justify-content: center; padding-top: 10px; }
+.tag.pin { color: var(--text-2); }
+.ok-ink { color: var(--good-ink); } .bad-ink { color: var(--critical-ink); }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; border-radius: 0; padding: 4px 10px; font-size: 12.5px; background: transparent; color: var(--text-2); }
+.seg button.on { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.spark { width: 80px; height: 24px; display: block; }
+
+.crumbs { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-family: var(--mono); font-size: 12.5px; margin-bottom: 10px; }
+.crumbs a { cursor: pointer; text-decoration: none; }
+.crumbs a:hover { text-decoration: underline; }
+.crumbs .here { color: var(--text); font-weight: 600; }
+.crumbs .dim { color: var(--muted); }
+.tree-row { display: grid; grid-template-columns: minmax(0, 1fr) 80px 34%; gap: 10px; align-items: center; padding: 6px 4px; border-radius: 8px; cursor: pointer; }
+.tree-row:hover { background: var(--surface-2); }
+.tree-row .name { font-family: var(--mono); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tree-row .size { text-align: right; font-size: 13px; }
+.tree-scroll { max-height: 520px; overflow: auto; }
+
+.group-h td { background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--text-2); padding: 5px 8px; }
+.brew-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+@media (max-width: 1000px) { .brew-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .brew-grid { grid-template-columns: 1fr; gap: 10px; } }
+.mini { padding: 12px 14px; background: var(--surface-2); border-radius: 10px; }
+.mini .label { font-size: 12px; color: var(--text-2); }
+.mini .value { font-size: 20px; font-weight: 650; }
+.mini ul { margin: 6px 0 0; padding-left: 16px; font-size: 12.5px; color: var(--text-2); max-height: 132px; overflow: auto; }
+.mini .dim { color: var(--muted); }
+.mise-head { margin: 18px 0 10px; padding-top: 14px; border-top: 1px solid var(--border); flex-wrap: wrap; row-gap: 6px; }
+.mise-head h2 { font-size: 14px; }
+details summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+pre.doctor { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; color: var(--text-2); background: var(--surface-2); padding: 10px; border-radius: 8px; }
+
+/* job drawer */
+#jobs { position: fixed; right: 20px; bottom: 20px; width: min(560px, calc(100vw - 32px)); z-index: 30; display: none; }
+#jobs.open { display: block; }
+#jobs .card { overflow: hidden; }
+#jobs .jh { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+#jobs .jh .t { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#jobs .card { box-shadow: 0 12px 40px rgba(0,0,0,.18); }
+#jobs pre { margin: 0; padding: 10px 14px; max-height: min(420px, 55vh); overflow: auto; font: 12px/1.5 var(--mono); background: var(--surface-2); white-space: pre-wrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.running { background: var(--accent); animation: pulse 1s infinite alternate; }
+.dot.done { background: var(--good); } .dot.failed { background: var(--critical); }
+@keyframes pulse { to { opacity: .35; } }
+
+dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--surface); color: var(--text); padding: 0; width: min(560px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+dialog::backdrop { background: rgba(0,0,0,.35); }
+dialog .dh { padding: 16px 18px 6px; font-weight: 650; font-size: 15px; }
+dialog .db { padding: 6px 18px 12px; color: var(--text-2); max-height: 50vh; overflow: auto; }
+dialog .df { padding: 12px 18px 16px; display: flex; justify-content: flex-end; gap: 8px; }
+dialog ul li { overflow-wrap: anywhere; }
+dialog code { font-family: var(--mono); font-size: 12px; background: var(--surface-2); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+dialog ul { padding-left: 18px; font-family: var(--mono); font-size: 12px; }
+.sr { position: absolute; left: -9999px; }
+@media (max-width: 700px) {
+  .top-inner, main { padding-left: 16px; padding-right: 16px; }
+  .top-inner { flex-wrap: wrap; row-gap: 6px; padding-bottom: 6px; }
+  nav.sections { order: 3; flex-basis: 100%; margin: 0 -10px; }
+  .top-actions { margin-left: auto; }
+  .last-scan { display: none; } .bar-cell { display: none; }
+  main { padding-top: 16px; gap: 16px; }
+  section.card { padding: 16px 14px; }
+  .tbl-wrap > table:not(.fit) { min-width: 600px; }
+  .d-only { display: none !important; } .m-only { display: block !important; } button .m-only { display: inline !important; }
+  .brew-last { font-size: 12.5px; }
+  .actions.wrap-m { flex-direction: column; align-items: flex-end; }
+  td, th { padding-left: 5px; padding-right: 5px; }
+  button.small { padding: 3px 7px; }
+  .tbl-wrap .note { font-size: 12px; }
+  .tree-row { grid-template-columns: minmax(0, 1fr) 72px 22%; }
+  .alert { flex-wrap: wrap; row-gap: 2px; }
+  .alert .msg { flex: 1 1 200px; }
+  .kpi.hero .value { font-size: 30px; }
+  #jobs { right: 16px; bottom: 16px; }
+}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-inner">
+  <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="20" rx="4" fill="var(--accent)"/><circle cx="23" cy="20" r="2.4" fill="#fff"/><rect x="7" y="11" width="14" height="2.4" rx="1.2" fill="#fff"/></svg>Disk Health<button class="ver" id="appVer" title="Check for updates"></button></div>
+  <nav class="sections">
+    <a href="#overview">Overview</a><a href="#growth">Growth</a><a href="#space">Space</a><a href="#caches">Caches</a><a href="#apps">Apps</a><a href="#trash">Trash</a><a href="#brew">Homebrew &amp; mise</a><a href="#git">Git</a><a href="#activity">Activity</a><a href="#logs">Logs</a>
+  </nav>
+  <div class="top-actions"><span class="last-scan" id="lastScan"></span><button class="primary" id="scanBtn">Scan now</button></div>
+</div>
+  <div id="miniProg" aria-live="polite"><div class="in"><span class="dot running"></span><span class="t" id="mpTitle"></span>
+    <div class="mb" id="mpBar"><i></i></div><span class="cur" id="mpCur"></span>
+    <button class="small" id="mpDetails">Details</button><button class="small" id="mpLog">Log</button><button class="small danger" id="mpCancel">Cancel</button></div></div>
+</header>
+
+<main>
+  <section class="card" id="scanProgress" hidden aria-live="polite"></section>
+  <div id="overview" class="alerts"></div>
+  <div class="kpis" id="kpis"></div>
+
+  <section class="card">
+    <div class="card-head"><h2>Free space</h2><span class="sub" id="freeSub"></span></div>
+    <div class="chart-wrap" id="freeChart"></div>
+  </section>
+
+  <div class="panels" id="panels">
+    <section class="card" id="growth">
+      <div class="card-head"><h2>Growing fastest</h2><span class="sub" id="growthSub"></span><span class="spacer"></span>
+        <div class="seg" id="growthSeg"><button data-d="7" class="on">7 days</button><button data-d="30">30 days</button></div></div>
+      <div id="growthBody"></div>
+    </section>
+    <section class="card" id="space">
+      <div class="card-head"><h2>Where the space is</h2><span class="sub">latest scan · click to drill down</span></div>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="tree-scroll" id="tree"></div>
+    </section>
+
+  <section class="card" id="caches">
+    <div class="card-head"><h2>Caches</h2><span class="sub" id="cachesSub"></span><span class="spacer"></span><button class="small" data-run="refresh">Re-measure</button></div>
+    <div id="cachesBody"></div>
+  </section>
+
+  <section class="card" id="apps">
+    <div class="card-head"><h2>Applications</h2><span class="sub" id="appsSub"></span><span class="spacer"></span>
+      <div class="seg" id="appsSeg"><button data-f="unused" class="on">Unused</button><button data-f="all">All</button></div></div>
+    <div id="appsBody"></div>
+  </section>
+
+  <section class="card" id="trash">
+    <div class="card-head"><h2>Trash</h2><span class="sub" id="trashSub"></span><span class="spacer"></span>
+      <button class="small" id="trashRefresh">Refresh</button><button class="primary destructive" id="trashEmpty">Empty Trash</button></div>
+    <div id="trashBody"><div class="empty">Loading…</div></div>
+  </section>
+
+  <section class="card" id="brew">
+    <div class="card-head"><h2>Homebrew, mise &amp; oh-my-zsh</h2><span class="sub" id="brewSub"></span><span class="spacer"></span>
+      <button class="small" data-run="brew-check">Check now</button><button class="small" id="copyBrewed" title="Copy the command to run it in your own terminal (includes omz reload)">Copy for Terminal</button><button class="primary" id="brewedBtn">Run brewed</button></div>
+    <div id="brewBody"></div>
+  </section>
+
+  <section class="card" id="git">
+    <div class="card-head"><h2>Git repositories</h2><span class="sub" id="gitSub"></span><span class="spacer"></span>
+      <input type="search" id="gitQ" class="filter-in" placeholder="Filter repos…" aria-label="Filter repositories">
+      <div class="seg" id="gitSeg"><button data-f="all" class="on">All</button><button data-f="github">GitHub</button><button data-f="attention">Local work</button><button data-f="stale">Not synced</button></div>
+      <div class="seg" id="gitSort"><button data-s="size" class="on">Biggest</button><button data-s="sync">Oldest sync</button></div>
+      <button class="small" data-run="git-scan">Refresh</button></div>
+    <div id="gitBody"><div class="empty">Not scanned yet.</div></div>
+  </section>
+
+  <section class="card" id="activity">
+    <div class="card-head"><h2>Activity</h2><span class="sub" id="activitySub"></span></div>
+    <div id="activityBody"></div>
+  </section>
+
+  <section class="card" id="logs">
+    <div class="card-head"><h2>Logs</h2><span class="sub">every job's full output, and the service log</span></div>
+    <div class="logs-bar"><select id="logSel" aria-label="Choose a log"></select>
+      <label class="note"><input type="checkbox" id="logFollow" checked> follow</label><span class="spacer" style="flex:1"></span>
+      <button class="small" id="logCopy">Copy</button></div>
+    <pre id="logView" tabindex="0">Choose a log above.</pre>
+  </section>
+  </div>
+</main>
+
+<div id="jobs"><div class="card">
+  <div class="jh"><span class="dot" id="jobDot"></span><span class="t" id="jobTitle"></span><button class="small" id="jobClose">Hide</button></div>
+  <pre id="jobLog"></pre>
+</div></div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<dialog id="confirm"><div class="dh" id="cfTitle"></div><div class="db" id="cfBody"></div>
+  <div class="df"><button id="cfCancel">Cancel</button><button class="primary" id="cfOk">Confirm</button></div></dialog>
+
+<script>
+const TOKEN = "__DH_TOKEN__";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let alertsAll = false;
+let D = null, HOME = "", growthDays = 7, growthAll = false, appsFilter = "unused", treePath = null, treeRoots = null, activeJob = null, jobSince = 0;
+const GROWTH_ROWS = 8;
+const tbl = (html, cls = "") => `<div class="tbl-wrap"><table class="${cls}">${html}</table></div>`;
+
+function hkb(kb) { let n = kb * 1024; const u = ["B","KB","MB","GB","TB"]; let i = 0;
+  while (Math.abs(n) >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return (i < 2 ? n.toFixed(0) : n >= 100 ? n.toFixed(0) : n.toFixed(1)) + " " + u[i]; }
+const hb = b => hkb(b / 1024);
+function ago(ts) { if (!ts) return "never"; const s = Date.now() / 1000 - ts;
+  if (s < 90) return "just now"; if (s < 3600) return Math.round(s / 60) + " min ago";
+  if (s < 86400) return Math.round(s / 3600) + " h ago"; const d = Math.round(s / 86400);
+  const pl = (n, u) => `${n} ${u}${n === 1 ? "" : "s"} ago`;
+  return d < 60 ? pl(d, "day") : d < 730 ? pl(Math.round(d / 30), "month") : pl(Math.round(d / 365), "year"); }
+function tickLabel(ts, span) { const d = new Date(ts * 1000);
+  return span < 2 * 86400 ? d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); }
+const fmtDate = ts => new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+function tilde(p) { return HOME && p.startsWith(HOME) ? "~" + p.slice(HOME.length) : p; }
+function pathHtml(p) { const t = tilde(p); const i = t.lastIndexOf("/");
+  return `<span class="path"><span class="dim">${esc(t.slice(0, i + 1))}</span>${esc(t.slice(i + 1))}</span>`; }
+function pathCell(p, tags = "") { const t = tilde(p); const i = t.lastIndexOf("/");
+  const leaf = i < 0 || t === "/" ? t : t.slice(i + 1), parent = i < 0 ? "" : t.slice(0, i + 1);
+  return `<div class="pc" title="${esc(p)}"><div class="leaf">${esc(leaf || t)}</div>${parent ? `<div class="parent"><bdi dir="ltr">${esc(parent)}</bdi></div>` : ""}${tags ? `<div class="tags">${tags}</div>` : ""}</div>`; }
+const LEVEL = { critical: "▲ Critical", warning: "▲ Warning", notice: "● Notice", info: "○ Info" };
+
+async function api(path, body) {
+  const opt = body ? { method: "POST", headers: { "Content-Type": "application/json", "X-DH-Token": TOKEN }, body: JSON.stringify(body) } : {};
+  const r = await fetch(path, opt); const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; }
+
+function confirmBox(title, html, okLabel = "Confirm", danger = false) {
+  return new Promise(res => { const d = $("#confirm"); $("#cfTitle").textContent = title; $("#cfBody").innerHTML = html;
+    const ok = $("#cfOk"); ok.textContent = okLabel; ok.className = danger ? "primary destructive" : "primary";
+    let settled = false; const done = v => { if (settled) return; settled = true; ok.onclick = $("#cfCancel").onclick = d.onclose = null; if (d.open) d.close(); res(v); };
+    ok.onclick = () => done(true); $("#cfCancel").onclick = () => done(false); d.onclose = () => done(false); d.showModal(); $("#cfCancel").focus(); }); }
+
+async function run(action, target) {
+  try { const j = await api("/api/run", { action, target }); progWasActive = true; setTimeout(pollProgress, 250);
+    toast(`Started: ${esc(j.label)}`); await refresh(); if (logSel === "") selectLog(String(j.id)); }
+  catch (e) { watchJob(null); $("#jobTitle").textContent = "Couldn't start " + action; $("#jobDot").className = "dot failed"; $("#jobLog").textContent = String(e.message || e); } }
+
+// ---------------------------------------------------------------- render
+function render() {
+  HOME = D.home; const disk = D.disk; const pct = 100 * disk.free / disk.total;
+  $("#appVer").textContent = D.version ? "v" + D.version : "";
+  $("#lastScan").textContent = D.last_scan ? "Last scan " + ago(D.last_scan) : "No scan yet";
+  $("#scanBtn").disabled = D.busy;
+
+  { const al = D.alerts.filter(a => a.level !== "info"), shown = alertsAll ? al : al.slice(0, 3);
+    $("#overview").innerHTML = shown.map(a =>
+      `<div class="alert ${a.level}"><span class="lvl">${LEVEL[a.level]}</span><span class="msg">${esc(a.title)}</span>`
+      + (a.cmd || a.url ? `<span class="acts">${a.cmd ? `<button class="small" data-copycmd="${esc(a.cmd)}">Copy update command</button>` : ""}`
+          + `${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">Download →</a>` : ""}</span>`
+        : `<a href="#${a.section}">Review →</a>`) + `</div>`).join("")
+      + (al.length > 3 ? `<button class="small alerts-more" id="alertsMore">${alertsAll ? "Show fewer" : `+${al.length - 3} more alert${al.length - 3 > 1 ? "s" : ""}`}</button>` : ""); }
+
+  // KPIs
+  const fh = D.free_history; let chg = null;
+  let chgLabel = "";
+  if (fh.length > 1) { const cutoff = Date.now() / 1000 - 7 * 86400; const base = fh.find(r => r.ts >= cutoff) || fh[0];
+    const span = (Date.now() / 1000 - base.ts) / 86400;
+    if (span >= 1 / 24) { chg = disk.free - base.free;
+      chgLabel = span >= 6.5 ? "in 7 days" : span >= 1 ? `in ${Math.round(span)} day${Math.round(span) > 1 ? "s" : ""}` : `in ${Math.max(1, Math.round(span * 24))} h`; } }
+  const c = D.caches, a = D.apps, b = D.brew;
+  const lvlColor = pct < D.config.free_critical_percent ? "var(--critical)" : pct < D.config.free_warn_percent ? "var(--warning)" : "var(--accent)";
+  $("#kpis").innerHTML = `
+    <div class="card kpi hero"><span class="label">Free space</span>
+      <span class="value num">${hb(disk.free)}</span>
+      <span class="hint num">${pct.toFixed(0)}% of ${hb(disk.total)}${chg !== null ? ` · <span class="${chg < 0 ? "delta-up" : "delta-down"}">${chg < 0 ? "−" : "+"}${hb(Math.abs(chg))}</span> ${chgLabel}` : ""}</span>
+      <div class="meter" aria-hidden="true"><i style="width:${(100 - pct).toFixed(1)}%;background:${lvlColor}"></i></div></div>
+    <a class="card kpi" href="#growth"><span class="label">Growing abnormally</span>
+      <span class="value num">${D.growth7.ready ? D.growth7.items.filter(i => i.abnormal).length : "—"}</span>
+      <span class="hint">${D.growth7.ready ? "folders in the last " + D.growth7.window_days + " days" : esc(D.growth7.reason || "")}</span></a>
+    <a class="card kpi" href="#caches"><span class="label">Cleanable caches</span>
+      <span class="value num">${c.total_kb != null ? hkb(c.total_kb) : "—"}</span><span class="hint">${c.items ? c.items.length + " caches found" : "Not measured yet"}</span></a>
+    <a class="card kpi" href="#apps"><span class="label">Unused apps</span>
+      <span class="value num">${a.unused_count ?? "—"}</span><span class="hint">${a.items ? (a.unused_kb ? hkb(a.unused_kb) + " · " : "") + D.config.unused_app_days + "+ days idle" : "Not scanned yet"}</span></a>
+    <a class="card kpi" href="#brew"><span class="label">Homebrew</span>
+      <span class="value num">${b.available === false ? "n/a" : b.outdated ? b.outdated.length + " outdated" : "—"}</span>
+      <span class="hint">${b.available ? `${(b.doctor || []).length ? (b.doctor.length + " doctor warning" + (b.doctor.length > 1 ? "s" : "")) : "doctor OK"} · ${(b.orphans || []).length} orphan${(b.orphans || []).length === 1 ? "" : "s"}` : b.available === false ? "Homebrew not installed" : b.pending ? "checking…" : "Not checked yet"}</span></a>`;
+
+  renderFreeChart(); renderGrowth(); renderCaches(); renderApps(); renderTrash(D.trash); renderBrew(); renderGit(); PANELS.forEach(renderPanel); renderActivity(); renderSummaries();
+}
+
+function renderFreeChart() {
+  const el = $("#freeChart"); const rows = D.free_history;
+  const spanD = rows.length ? (rows.at(-1).ts - rows[0].ts) / 86400 : 0;
+  $("#freeSub").textContent = !rows.length ? "" : spanD < 1 ? `since ${new Date(rows[0].ts * 1000).toLocaleString(undefined, { weekday: "short", hour: "2-digit", minute: "2-digit" })} · sampled hourly`
+    : `last ${Math.round(spanD)} day${Math.round(spanD) > 1 ? "s" : ""}`;
+  if (rows.length < 2) { el.innerHTML = `<div class="empty">The chart fills in as hourly samples accumulate.</div>`; return; }
+  const W = el.clientWidth || 900, H = 150, P = { l: 52, r: 12, t: 14, b: 26 };
+  const xs = rows.map(r => r.ts), ys = rows.map(r => r.free / 1024 ** 3);
+  const warnGB = rows.at(-1).total * D.config.free_warn_percent / 100 / 1024 ** 3;
+  const x0 = xs[0], x1 = xs.at(-1); let ymax = Math.max(...ys, warnGB) * 1.1; const step = niceStep(ymax / 4); ymax = Math.ceil(ymax / step) * step;
+  const X = t => P.l + (t - x0) / (x1 - x0 || 1) * (W - P.l - P.r), Y = v => P.t + (1 - v / ymax) * (H - P.t - P.b);
+  let g = ""; for (let v = 0; v <= ymax + 1e-9; v += step) g += `<line x1="${P.l}" x2="${W - P.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${P.l - 8}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${v.toFixed(0)} GB</text>`;
+  // x ticks: as many as fit (~110px apart), never overlapping
+  const nT = Math.max(2, Math.min(6, Math.floor((W - P.l - P.r) / 110) + 1)); let xt = "";
+  for (let i = 0; i < nT; i++) { const t = x0 + (x1 - x0) * i / (nT - 1); xt += `<text x="${X(t)}" y="${H - 6}" text-anchor="${i === 0 ? "start" : i === nT - 1 ? "end" : "middle"}" font-size="11" fill="var(--muted)">${tickLabel(t, x1 - x0)}</text>`; }
+  const pts = rows.map((r, i) => `${X(xs[i]).toFixed(1)},${Y(ys[i]).toFixed(1)}`);
+  const area = `M${X(x0)},${Y(0)} L${pts.join(" L")} L${X(x1)},${Y(0)} Z`;
+  // Threshold label: start of the line, above it unless the data passes through that spot, then below.
+  const warnY = Y(warnGB); let warn = "";
+  if (warnY > P.t) {
+    const label = `${D.config.free_warn_percent}% warning`, lx = P.l + 6, lw = label.length * 6.2 + 8;
+    const near = xs.flatMap((t, i) => X(t) <= lx + lw ? [Y(ys[i])] : []);
+    const clashAbove = near.some(y => y > warnY - 20 && y < warnY + 2);
+    const ly = clashAbove ? warnY + 14 : warnY - 6;
+    warn = `<line x1="${P.l}" x2="${W - P.r}" y1="${warnY}" y2="${warnY}" stroke="var(--warning)" stroke-width="1.5" stroke-dasharray="4 4"/>
+      <text class="halo" x="${lx}" y="${ly}" font-size="11" fill="var(--warning-ink)">▲ ${label}</text>`;
+  }
+  el.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Free disk space over time">${g}${xt}
+    <path d="${area}" fill="var(--accent)" opacity=".10"/>${warn}<polyline points="${pts.join(" ")}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>
+    <line id="xh" y1="${P.t}" y2="${H - P.b}" stroke="var(--muted)" opacity="0"/><circle id="xd" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+    <rect x="0" y="0" width="${W}" height="${H}" fill="transparent" id="hit" style="touch-action: pan-y"/></svg><div class="tooltip" id="tt" role="status"></div>`;
+  const hit = $("#hit", el), tt = $("#tt", el), xh = $("#xh", el), xd = $("#xd", el), svg = $("svg", el);
+  hit.addEventListener("pointermove", e => { const r = svg.getBoundingClientRect(); const mx = (e.clientX - r.left) * W / r.width;
+    let bi = 0, bd = 1e18; xs.forEach((t, i) => { const d = Math.abs(X(t) - mx); if (d < bd) { bd = d; bi = i; } });
+    const cx = X(xs[bi]), cy = Y(ys[bi]); xh.setAttribute("x1", cx); xh.setAttribute("x2", cx); xh.setAttribute("opacity", .5);
+    xd.setAttribute("cx", cx); xd.setAttribute("cy", cy); xd.setAttribute("opacity", 1);
+    tt.innerHTML = `<b>${hb(rows[bi].free)}</b> free · ${new Date(xs[bi] * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`;
+    const px = cx * r.width / W, py = cy * r.height / H, tw = tt.offsetWidth, th = tt.offsetHeight;
+    const left = Math.max(0, Math.min(el.clientWidth - tw, px - tw / 2)), top = py - th - 10 < 0 ? py + 12 : py - th - 10;
+    tt.style.transform = `translate(${left}px, ${top}px)`; tt.style.opacity = 1; });
+  hit.addEventListener("pointerleave", () => { tt.style.opacity = 0; xh.setAttribute("opacity", 0); xd.setAttribute("opacity", 0); });
+}
+function niceStep(x) { const p = 10 ** Math.floor(Math.log10(x || 1)); const f = x / p; return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p; }
+
+function spark(series) {
+  const v = series.map(s => s[1]); const known = v.filter(x => x != null); if (known.length < 2) return "";
+  const mn = Math.min(...known), mx = Math.max(...known); const W = 80, H = 24;
+  const pts = v.map((y, i) => y == null ? null : `${(i / (v.length - 1) * (W - 4) + 2).toFixed(1)},${(H - 3 - (y - mn) / (mx - mn || 1) * (H - 6)).toFixed(1)}`).filter(Boolean);
+  const last = pts.at(-1).split(",");
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" aria-hidden="true"><polyline points="${pts.join(" ")}" fill="none" stroke="var(--accent)" stroke-width="1.5"/><circle cx="${last[0]}" cy="${last[1]}" r="2.5" fill="var(--accent)"/></svg>`;
+}
+
+function renderGrowth() {
+  const g = growthDays === 7 ? D.growth7 : D.growth30;
+  $("#growthSub").textContent = g.ready ? `${fmtDate(g.from_ts)} → ${fmtDate(g.to_ts)}${g.partial ? " (only " + g.window_days + " days of history yet)" : ""}` : "";
+  if (!g.ready) { $("#growthBody").innerHTML = `<div class="empty">${esc(g.reason)}. Growth appears after the second daily scan.</div>`; return; }
+  if (!g.items.length) { $("#growthBody").innerHTML = `<div class="empty">Nothing grew by more than 100 MB. Nice.</div>`; return; }
+  const shown = growthAll ? g.items : g.items.slice(0, GROWTH_ROWS), hidden = g.items.length - shown.length;
+  $("#growthBody").innerHTML = tbl(`<thead><tr><th>Folder</th><th class="r">Now</th><th class="r">Growth</th><th class="d-only">Trend</th><th></th></tr></thead><tbody>${
+    shown.map(i => `<tr><td class="pcell">${pathCell(i.path, (i.abnormal ? `<span class="tag warn">▲ abnormal</span>` : "") + (i.new ? `<span class="tag">new</span>` : ""))}</td>
+      <td class="r num">${hkb(i.kb)}</td><td class="r num delta-up">+${hkb(i.delta_kb)}</td><td class="d-only">${spark(i.series)}</td>
+      <td><div class="actions"><button class="small d-only" data-reveal="${esc(i.path)}" title="Reveal in Finder">Finder</button><button class="small" data-tree="${esc(i.path)}" title="Show in “Where the space is”">Explore</button></div></td></tr>`).join("")}</tbody>`, "fit")
+    + (g.items.length > GROWTH_ROWS ? `<div class="more"><button class="small" id="growthMore">${hidden ? `Show ${hidden} more` : "Show fewer"}</button></div>` : "");
+}
+
+async function loadTree(path) {
+  let t;
+  try {
+    if (!treeRoots || !path) { const r = await api("/api/tree"); treeRoots = r.items.map(i => i.path); treeRootItems = r.items; if (!path) t = r; if (typeof renderSummaries === "function" && D) renderSummaries(); }
+    if (!t) t = await api("/api/tree?path=" + encodeURIComponent(path));
+  } catch (e) { $("#tree").innerHTML = `<div class="empty">Couldn't load folders: ${esc(e.message)}</div>`; return; }
+  treePath = path;
+  // Crumbs: All roots / <scan root> / each segment below it. The last crumb is the current folder.
+  const crumbs = [path ? '<a data-tree="" href="#space">All roots</a>' : '<span class="here">All roots</span>'];
+  if (path) {
+    const root = treeRoots.filter(r => path === r || path.startsWith(r.replace(/\/$/, "") + "/")).sort((a, b) => b.length - a.length)[0] || "";
+    const steps = root ? [[root, tilde(root)]] : [];
+    let acc = root.replace(/\/$/, "");
+    path.slice(acc.length).split("/").filter(Boolean).forEach(seg => { acc += "/" + seg; steps.push([acc, seg]); });
+    steps.forEach(([p, label], i) => crumbs.push(i === steps.length - 1
+      ? `<span class="here">${esc(label)}</span>` : `<a data-tree="${esc(p)}" href="#space">${esc(label)}</a>`));
+  }
+  $("#crumbs").innerHTML = crumbs.join(' <span class="dim">/</span> ');
+  if (!t.items.length) { $("#tree").innerHTML = `<div class="empty">${!D || D.last_scan ? (path ? "No sub-folders above the size threshold." : "No folders recorded in the latest scan.") : "Run a scan to see where the space goes."}</div>`; return; }
+  const max = Math.max(...t.items.map(i => i.kb), 1);
+  $("#tree").innerHTML = t.items.map(i => `<div class="tree-row" data-tree="${esc(i.path)}" title="${esc(i.path)}" tabindex="0" role="button"><span class="name">${esc(path ? i.path.slice(path.replace(/\/$/, "").length + 1) : tilde(i.path))}</span>
+    <span class="size num">${hkb(i.kb)}</span><div><div class="bar" style="width:${(100 * i.kb / max).toFixed(1)}%"></div></div></div>`).join("");
+}
+
+const RISK = { safe: "safe to delete", rebuild: "rebuilt automatically", redownload: "re-downloaded" };
+function renderCaches() {
+  const c = D.caches; if (!c.items) { $("#cachesBody").innerHTML = `<div class="empty">Not measured yet. Click <b>Scan now</b> or <b>Re-measure</b>.</div>`; return; }
+  $("#cachesSub").textContent = `${hkb(c.total_kb)} total · measured ${ago(c.ts)}`;
+  const max = Math.max(...c.items.map(i => i.kb), 1); const groups = [...new Set(c.items.map(i => i.group))];
+  $("#cachesBody").innerHTML = `<div class="tbl-wrap"><table class="fit"><thead><tr><th>Cache</th><th class="r">Size</th><th class="bar-cell"></th><th class="d-only">Effect</th><th></th></tr></thead><tbody>${
+    groups.map(gr => `<tr class="group-h"><td colspan="5">${esc(gr)}</td></tr>` + c.items.filter(i => i.group === gr).map(i => `<tr>
+      <td><div>${esc(i.name)}</div>${i.note || i.detail ? `<div class="note">${esc([i.detail, i.note].filter(Boolean).join(" · "))}</div>` : ""}<span class="tag m-only ${i.risk}">${RISK[i.risk] || i.risk}</span></td>
+      <td class="r num">${hkb(i.kb)}</td><td class="bar-cell"><div class="bar" style="width:${(100 * i.kb / max).toFixed(1)}%"></div></td>
+      <td class="d-only"><span class="tag ${i.risk}">${RISK[i.risk] || i.risk}</span></td>
+      <td><div class="actions"><button class="small" data-clean="${esc(i.id)}" ${i.kb <= 0 ? "disabled" : ""}>Clean</button></div></td></tr>`).join("")).join("")}</tbody></table></div>`;
+}
+
+function renderApps() {
+  const a = D.apps; if (!a.items) { $("#appsBody").innerHTML = `<div class="empty">Not scanned yet. Click <b>Scan now</b>.</div>`; return; }
+  $("#appsSub").textContent = `${a.items.length} apps · ${a.unused_count} unused (${hkb(a.unused_kb)})`;
+  const items = appsFilter === "unused" ? a.items.filter(i => i.unused) : [...a.items].sort((x, y) => y.kb - x.kb);
+  if (!items.length) { $("#appsBody").innerHTML = `<div class="empty">Every app was opened in the last ${D.config.unused_app_days} days.</div>`; return; }
+  const SRC = { brew: "Homebrew cask", appstore: "App Store", manual: "Manual install" };
+  $("#appsBody").innerHTML = `<div class="tbl-wrap"><table class="fit"><thead><tr><th>App</th><th class="r">Size</th><th>Last opened</th><th class="d-only">Installed via</th><th></th></tr></thead><tbody>${
+    items.map(i => `<tr><td><div>${esc(i.name)} <span class="note">${esc(i.version)}</span></div><div class="note path d-only">${esc(tilde(i.path))}</div><span class="tag m-only">${{ brew: "brew cask", appstore: "App Store", manual: "Manual" }[i.source] || ""}</span></td>
+      <td class="r num">${hkb(i.kb)}</td><td>${i.last_used ? ago(i.last_used) : `<span class="note">no record · installed ${ago(i.installed)}</span>`}${i.unused ? ` <span class="tag warn">unused</span>` : ""}</td>
+      <td class="d-only"><span class="tag">${SRC[i.source]}</span>${i.cask ? ` <span class="note">${esc(i.cask)}</span>` : ""}</td>
+      <td><div class="actions wrap-m">${i.cask ? `<button class="small" data-reinstall="${esc(i.path)}" title="Clean reinstall (zap settings, then install fresh)"><span class="d-only">Clean reinstall</span><span class="m-only">Reinstall</span></button>` : ""}<button class="small danger" data-uninstall="${esc(i.path)}">Uninstall</button></div></td></tr>`).join("")}</tbody></table></div>`;
+}
+
+function renderMise() {
+  const m = F(D, "mise");
+  if (m.available === undefined) return `<div class="card-head mise-head"><h2>mise</h2><span class="sub">not checked yet</span><span class="spacer"></span><button class="small" data-run="mise-scan">Check now</button></div>`;
+  if (!m.available) return `<p class="note">mise isn't installed (<a href="https://mise.jdx.dev" target="_blank" rel="noopener">mise.jdx.dev</a>): nothing to show.</p>`;
+  const od = m.outdated || [], pr = m.prunable || [], tools = m.tools || [], doc = m.doctor || {};
+  const cache = ((D.caches || {}).items || []).find(i => i.id === "mise");
+  const more = (arr, n) => arr.length > n ? `<li class="dim">+${arr.length - n} more</li>` : "";
+  return `<div class="card-head mise-head"><h2>mise</h2><span class="sub">${esc(m.version)} · ${esc(m.install_method)} · ${(m.projects || []).length} project${(m.projects || []).length === 1 ? "" : "s"} tracked · checked ${ago(m.ts)}</span><span class="spacer"></span>
+      <button class="small" data-run="mise-scan">Check now</button>${m.self_update ? `<button class="small" data-mise="self-update">Self-update</button>` : ""}
+      <button class="small" data-mise="prune" ${pr.length ? "" : "disabled"}>Prune unused</button><button class="primary" data-mise="upgrade" ${od.length ? "" : "disabled"}>Upgrade tools</button></div>
+    <div class="brew-grid">
+      <div class="mini"><div class="label">Installed by mise</div><div class="value num">${hkb(m.installs_kb)}</div><div class="note">${m.versions} version${m.versions === 1 ? "" : "s"} of ${tools.length} tool${tools.length === 1 ? "" : "s"}</div>
+        ${tools.length ? `<ul>${tools.slice(0, 6).map(t => `<li>${esc(t.tool)} <span class="dim">${t.versions.length} · ${hkb(t.kb)}</span></li>`).join("")}${more(tools, 6)}</ul>` : ""}</div>
+      <div class="mini"><div class="label">Outdated (within requested range)</div><div class="value num">${od.length}</div>
+        ${od.length ? `<ul>${od.slice(0, 6).map(o => `<li title="${esc((o.sources || []).map(tilde).join("\n"))}">${esc(o.name)} <span class="dim">${esc(o.current || "missing")} → ${esc(o.latest)}${o.requested ? ` (${esc(o.requested)})` : ""}</span></li>`).join("")}${more(od, 6)}</ul>` : ""}</div>
+      <div class="mini"><div class="label">Not used by any project</div><div class="value num">${hkb(m.prunable_kb)}</div><div class="note">${pr.length} version${pr.length === 1 ? "" : "s"} <code>mise prune</code> would remove</div>
+        ${pr.length ? `<ul>${pr.slice(0, 6).map(p => `<li>${esc(p.tool)}@${esc(p.version)} <span class="dim">${hkb(p.kb)}</span></li>`).join("")}${more(pr, 6)}</ul>` : ""}</div>
+      <div class="mini"><div class="label">mise cache</div><div class="value num">${hkb(m.cache_kb)}</div>
+        <div class="note" style="margin-top:6px">${cache ? `<button class="small" data-clean="mise">Clear cache</button>` : esc(tilde(m.cache_dir || ""))}</div>
+        <div class="note" style="margin-top:6px">mise doctor: ${doc.ok === false ? `<span style="color:var(--warning-ink)">▲ ${doc.problems.length} problem${doc.problems.length > 1 ? "s" : ""}</span>` : "✓ OK"}</div></div>
+    </div>
+    ${doc.problems && doc.problems.length ? `<details style="margin-bottom:14px"><summary>mise doctor details</summary><ul>${doc.problems.map(x => `<li>${esc(x)}</li>`).join("")}</ul></details>` : ""}`;
+}
+
+function renderBrew() {
+  const b = D.brew; const el = $("#brewBody");
+  if (b.available === false) { el.innerHTML = `<div class="empty">Homebrew not found.</div>` + renderMise(); $("#brewedBtn").disabled = true; return; }
+  if (!b.outdated) { el.innerHTML = `<div class="empty">${b.pending ? "First check running…" : "Not checked yet."}</div>` + renderMise(); return; }
+  $("#brewSub").textContent = `checked ${ago(b.ts)}`;
+  const omz = b.omz || {};
+  el.innerHTML = `<div class="brew-grid">
+    <div class="mini"><div class="label">brew outdated</div><div class="value num">${b.outdated.length}</div>${b.outdated.length ? `<ul>${b.outdated.map(o => `<li>${esc(o.name)} <span class="dim">${esc(o.from)} → ${esc(o.to)}</span>${o.kind === "cask" ? " (cask)" : ""}${o.pinned ? ` <span class="tag pin">pinned</span>` : ""}</li>`).join("")}</ul>` : ""}</div>
+    <div class="mini"><div class="label">brew doctor</div><div class="value">${b.doctor.length ? `<span style="color:var(--warning-ink)">▲ ${b.doctor.length} warning${b.doctor.length > 1 ? "s" : ""}</span>` : `<span style="color:var(--good-ink)">✓ OK</span>`}</div>${b.doctor.length ? `<ul>${b.doctor.map(w => `<li>${esc(w.title)}</li>`).join("")}</ul>` : ""}</div>
+    <div class="mini"><div class="label">Unneeded dependencies</div><div class="value num">${b.orphans.length}</div>${b.orphans.length ? `<ul>${b.orphans.map(o => `<li>${esc(o)}</li>`).join("")}</ul>` : ""}</div>
+    <div class="mini"><div class="label">brew cleanup would free</div><div class="value num">${esc(b.cleanup_reclaimable)}</div><div class="note" style="margin-top:6px">oh-my-zsh: ${omz.installed ? "updated " + ago(omz.last_update) : "not installed"}</div></div>
+  </div>
+  <div class="alias-row">${b.alias ? `Your <b>${esc(b.alias_name || "brewed")}</b> alias:` : "Command:"} <code>${esc(b.alias || BREWED_FALLBACK)}</code>
+    <span class="note">“Run brewed” runs it here without <code>omz reload</code>; “Copy for Terminal” lets you run the full alias yourself.</span></div>
+  ${b.doctor.length ? `<details style="margin-bottom:14px"><summary>Doctor details</summary>${b.doctor.map(w => `<p><b>${esc(w.title)}</b></p><pre class="doctor">${esc(w.body)}</pre>`).join("")}</details>` : ""}
+  ${renderMise()}
+  <div class="card-head" style="margin:6px 0 8px"><h2 style="font-size:14px">Tools you installed</h2><span class="sub">brew leaves · last use from your zsh history (${D.config.unused_tool_days}+ days = unused)</span></div>
+  <div class="tbl-wrap"><table class="fit"><thead><tr><th>Formula</th><th class="r">Size</th><th>Last used<span class="d-only"> in shell</span></th><th class="r d-only">Uses</th><th></th></tr></thead><tbody>${
+    b.leaves.map(l => `<tr><td><div>${esc(l.name)} ${l.unused ? `<span class="tag warn">unused</span>` : ""}</div><div class="note">${esc(l.desc)}${l.bin_count ? "" : " · library, no commands"}</div></td>
+      <td class="r num">${hkb(l.kb)}</td><td>${l.bin_count ? (l.last_seen ? ago(l.last_seen) : `<span class="note">not in history<span class="d-only"> · installed ${ago(l.installed)}</span></span>`) : "—"}</td>
+      <td class="r num d-only">${l.bin_count ? l.uses : "—"}</td>
+      <td><div class="actions wrap-m"><button class="small" data-brew-reinstall="${esc(l.name)}">Reinstall</button><button class="small danger" data-brew-uninstall="${esc(l.name)}">Uninstall</button></div></td></tr>`).join("")}</tbody></table></div>`;
+}
+
+const KIND = { "clean-cache": "Cleaned", "uninstall-app": "Uninstalled", "reinstall-app": "Reinstalled",
+  "brew-uninstall": "brew uninstall", "brew-reinstall": "brew reinstall", "mise-prune": "mise prune", "mise-upgrade": "mise upgrade" };
+const STATUS = { done: "✓ done", failed: "✕ failed", running: "running…", queued: "queued", cancelled: "cancelled" };
+function actTarget(a) { const c = (D.caches.items || []).find(i => i.id === a.target);
+  return c ? c.name : a.target && a.target.endsWith(".app") ? a.target.split("/").pop().slice(0, -4) : a.target || ""; }
+function renderActivity() {
+  $("#activitySub").textContent = D.freed_30d_kb ? `${hkb(D.freed_30d_kb)} freed in the last 30 days` : "";
+  const jobs = D.jobs.map(j => `<tr><td style="width:18px"><span class="dot ${j.status}" style="display:inline-block"></span></td><td><a href="#" data-job="${j.id}">${esc(j.label)}</a></td><td class="note ${j.status === "failed" ? "bad-ink" : ""}" style="white-space:nowrap">${STATUS[j.status] || esc(j.status)}</td><td class="note r" style="white-space:nowrap">${ago(j.started || j.created)}</td></tr>`).join("");
+  const acts = D.actions.map(a => `<tr><td style="width:18px" class="${a.ok ? "ok-ink" : "bad-ink"}" title="${a.ok ? "succeeded" : "failed"}">${a.ok ? "✓" : "✕"}</td>
+    <td>${esc(KIND[a.kind] || a.kind)} <b style="font-weight:550">${esc(actTarget(a))}</b>${!a.ok ? ` <span class="note bad-ink">failed${a.detail ? ": " + esc(a.detail.split("\n")[0].slice(0, 80)) : ""}</span>` : ""}</td>
+    <td class="r num">${a.freed_kb ? hkb(a.freed_kb) : ""}</td><td class="note r" style="white-space:nowrap">${ago(a.ts)}</td></tr>`).join("");
+  $("#activityBody").innerHTML = `<div class="grid-2"><div><div class="note" style="margin-bottom:6px">Recent jobs</div>${jobs ? tbl(jobs, "fit") : `<div class="empty">No jobs yet.</div>`}</div>
+    <div><div class="note" style="margin-bottom:6px">Clean-up history</div>${acts ? tbl(acts, "fit") : `<div class="empty">Nothing cleaned yet.</div>`}</div></div>`;
+}
+
+// ---------------------------------------------------------------- jobs
+let pollTimer = null;
+function watchJob(id) { activeJob = id; jobSince = 0; $("#jobLog").textContent = ""; $("#jobs").classList.add("open"); pollJob(); }
+async function pollJob() {
+  clearTimeout(pollTimer); if (!activeJob) return;
+  try { const j = await api(`/api/jobs/${activeJob}?since=${jobSince}`);
+    $("#jobTitle").textContent = j.label; $("#jobDot").className = "dot " + j.status;
+    if (j.log.length) { const pre = $("#jobLog"); const atBottom = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 20;
+      pre.textContent += (pre.textContent ? "\n" : "") + j.log.join("\n"); jobSince = j.log_len; if (atBottom) pre.scrollTop = pre.scrollHeight; }
+    if (j.status === "running" || j.status === "queued") pollTimer = setTimeout(pollJob, 800); else { activeJob = null; refresh(); }
+  } catch (e) { pollTimer = setTimeout(pollJob, 2000); } }
+$("#jobClose").onclick = () => { $("#jobs").classList.remove("open"); };
+
+// ---------------------------------------------------------------- events
+document.addEventListener("click", async e => {
+  const t = e.target.closest("[data-tree],[data-reveal],[data-clean],[data-uninstall],[data-reinstall],[data-brew-uninstall],[data-brew-reinstall],[data-run],[data-job]");
+  if (!t) return;
+  if (t.dataset.tree !== undefined) { e.preventDefault(); const fromGrowth = !!t.closest("#growth"); await loadTree(t.dataset.tree || null); if (fromGrowth) openPanel("space"); return; }
+  if (t.dataset.reveal) return api("/api/reveal", { path: t.dataset.reveal }).catch(() => {});
+  if (t.dataset.job) { e.preventDefault(); return selectLog(String(t.dataset.job), true); }
+  if (t.dataset.run) return run(t.dataset.run);
+  if (t.dataset.clean) { const c = D.caches.items.find(i => i.id === t.dataset.clean);
+    const ok = await confirmBox(`Clean ${c.name}?`, `<p>About <b>${hkb(c.kb)}</b> will be freed. ${esc(c.note || "")}</p>${c.paths.length ? `<ul>${c.paths.map(p => `<li>${esc(tilde(p))}</li>`).join("")}</ul>` : ""}<p class="note">Effect: ${RISK[c.risk]}.</p>`, "Clean");
+    if (ok) run("clean-cache", c.id); return; }
+  if (t.dataset.uninstall) { const app = D.apps.items.find(i => i.path === t.dataset.uninstall);
+    let body = `<p><b>${esc(app.name)}</b> · ${hkb(app.kb)} · ${app.last_used ? "last opened " + ago(app.last_used) : "no recorded launch"}</p>`;
+    if (app.cask) body += `<p>Runs <code>brew uninstall --cask --zap ${esc(app.cask)}</code>, which also removes its settings and support files.</p>`;
+    else { const lo = await api("/api/leftovers?path=" + encodeURIComponent(app.path)).catch(() => ({ items: [] }));
+      body += `<p>The app and these related files will be moved to the Trash (you can restore them until you empty it):</p><ul><li>${esc(tilde(app.path))}</li>${lo.items.map(l => `<li>${esc(tilde(l.path))} <span class="dim">${hkb(l.kb)}</span></li>`).join("")}</ul>`; }
+    if (!app.cask) body += `<label class="cf-opt"><input type="checkbox" id="cfPermanent"> <span><b>Delete permanently</b> (skip the Trash): frees the space right away, but can't be undone.</span></label>`;
+    const box = confirmBox(`Uninstall ${app.name}?`, body, "Uninstall", true);
+    let permanent = false; const cb = $("#cfPermanent"); if (cb) cb.onchange = () => { permanent = cb.checked; };
+    if (await box) run(permanent ? "uninstall-app-permanent" : "uninstall-app", app.path); return; }
+  if (t.dataset.reinstall) { const app = D.apps.items.find(i => i.path === t.dataset.reinstall);
+    if (await confirmBox(`Clean reinstall ${app.name}?`, `<p>Removes the app <b>and its settings</b> (<code>--zap</code>), then installs a fresh copy with Homebrew. Sign-ins and preferences will be reset.</p>`, "Reinstall", true)) run("reinstall-app", app.path); return; }
+  if (t.dataset.brewUninstall) { const n = t.dataset.brewUninstall;
+    if (await confirmBox(`brew uninstall ${n}?`, `<p>Removes <b>${esc(n)}</b>, then runs <code>brew autoremove</code> for dependencies nothing else needs.</p>`, "Uninstall", true)) run("brew-uninstall", n); return; }
+  if (t.dataset.brewReinstall) { const n = t.dataset.brewReinstall;
+    if (await confirmBox(`Reinstall ${n}?`, `<p>Uninstalls and installs <b>${esc(n)}</b> again (fresh copy, same version channel). Its config files in your home folder are kept.</p>`, "Reinstall")) run("brew-reinstall", n); }
+});
+// ---------------------------------------------------------------- live scan progress
+let progTimer = null, progWasActive = false;
+const dur = s => s == null ? "" : s < 60 ? `${Math.round(s)} s` : s < 3600 ? `${Math.floor(s / 60)} min ${String(Math.round(s % 60)).padStart(2, "0")} s` : `${Math.floor(s / 3600)} h ${Math.round((s % 3600) / 60)} min`;
+function renderProgress(p) {
+  const el = $("#scanProgress"), mini = $("#miniProg");
+  if (!p || !p.active) { el.hidden = true; mini.classList.remove("on"); return; }
+  el.hidden = false; mini.classList.add("on");
+  const pct = p.pct == null ? null : Math.round(100 * p.pct);
+  const steps = p.steps.length > 1 ? p.steps.map((name, i) => `<span class="sp-step ${i < p.step ? "done" : i === p.step ? "on" : ""}">${i < p.step ? "✓ " : (i + 1) + ". "}${esc(name)}</span>`).join("") : "";
+  const eta = p.indeterminate ? "" : p.eta != null ? `about ${dur(p.eta)} left` : "estimating time left…";
+  const big = (p.biggest || []), maxB = Math.max(...big.map(b => b.kb), 1);
+  const isScan = p.kind === "scan" || p.title === "Scanning";
+  const showKb = !p.generic && (p.kb || p.expected_kb);
+  const queue = (p.queued || []);
+  el.innerHTML = `<div class="sp-head"><span class="dot running"></span><h2>${esc(p.title || "Working")}${pct != null ? ` · ${pct}%` : ""}</h2>
+      <span class="note">${esc(p.detail || "")}</span><div class="sp-steps">${steps}</div></div>
+    <div class="sp-bar ${pct == null ? "indet" : ""}" role="progressbar" aria-valuemin="0" aria-valuemax="100" ${pct != null ? `aria-valuenow="${pct}"` : ""}><i style="width:${pct ?? 0}%"></i></div>
+    <div class="sp-line"><span><b>${dur(p.elapsed)}</b> elapsed</span>${eta ? `<span>${eta}</span>` : ""}
+      ${p.counter_label && p.counter ? `<span><b class="num">${(p.counter || 0).toLocaleString()}</b> ${esc(p.counter_label)}</span>` : ""}
+      ${p.items_total > 1 ? `<span>folder <b>${Math.min(p.items_done + 1, p.items_total)}/${p.items_total}</b></span>` : ""}
+      ${showKb ? `<span><b class="num">${hkb(p.kb || 0)}</b> ${esc(p.kb_label || "")}${p.expected_kb ? ` of ~${hkb(p.expected_kb)} <span class="note">(${esc(p.expected_from || "estimate")})</span>` : ""}</span>` : ""}
+      ${p.root_count > 1 ? `<span>root <b>${p.root_index + 1}/${p.root_count}</b> · ${esc(tilde(p.root || ""))}</span>` : ""}</div>
+    ${p.current ? `<div class="sp-current" title="${esc(p.current)}">&lrm;${esc(tilde(p.current))}&lrm;</div>` : ""}
+    ${isScan && p.step === 0 && big.length ? `<div class="sp-big-title">Biggest folders so far</div><div class="sp-big">${big.map(b => `<div class="row"><span class="n" title="${esc(b.path)}">${esc(tilde(b.path))}</span><span class="num">${hkb(b.kb)}</span><div class="bar" style="width:${(100 * b.kb / maxB).toFixed(1)}%"></div></div>`).join("")}</div>` : ""}
+    ${(p.others || []).length ? `<div class="sp-others">${p.others.map(o => `<div class="sp-other"><span class="dot running"></span><b>${esc(o.title)}</b>${o.pct != null ? ` · ${Math.round(100 * o.pct)}%` : ""} <span class="note">${esc(tilde(o.current || ""))}</span><button class="small" data-showlog="${o.job_id}">Log</button><button class="small danger" data-cancel="${o.job_id}">Cancel</button></div>`).join("")}</div>` : ""}
+    <div class="sp-actions"><button class="small" data-showlog="${p.job_id || ""}">Show full log</button><button class="small danger" data-cancel="${p.job_id || ""}">Cancel</button>
+      ${queue.length ? `<span class="sp-queue">Next: ${queue.map(q => `${esc(q.label)} <a href="#" class="unq" data-cancel="${q.id}" title="Remove from the queue">✕</a>`).join(" · ")}</span>` : ""}</div>`;
+  $("#mpTitle").textContent = `${p.title || "Working"}${pct != null ? " · " + pct + "%" : ""}${p.eta != null && !p.indeterminate ? " · ~" + dur(p.eta) + " left" : ""}${queue.length ? ` (+${queue.length} queued)` : ""}`;
+  $("#mpBar").classList.toggle("indet", pct == null); $("#mpBar i").style.width = (pct ?? 0) + "%";
+  $("#mpCur").innerHTML = p.current ? `&lrm;${esc(tilde(p.current))}&lrm;` : "";
+  $("#mpLog").dataset.showlog = p.job_id || "";
+  $("#mpCancel").dataset.cancel = p.job_id || "";
+}
+async function pollProgress() {
+  clearTimeout(progTimer);
+  try { const p = await api("/api/progress"); renderProgress(p);
+    $("#scanBtn").textContent = p.active && p.kind === "scan" ? "Scanning…" : "Scan now";
+    if (p.active && p.job_id && logSel === String(p.job_id)) loadLog(); $("#scanBtn").disabled = !!p.active || !!(D && D.busy);
+    if (progWasActive && !p.active) refresh();
+    progWasActive = !!p.active;
+    progTimer = setTimeout(pollProgress, p.active ? 1500 : 15000);
+  } catch (e) { progTimer = setTimeout(pollProgress, 5000); } }
+
+// ---------------------------------------------------------------- git
+let gitFilter = "all", gitSort = "size";
+function renderGit() {
+  const g = (D && D.git) || {}, el = $("#gitBody");
+  if (g.available === false) { el.innerHTML = `<div class="empty">git isn't installed.</div>`; return; }
+  if (!g.items) { el.innerHTML = `<div class="empty">Not scanned yet. Click Refresh (reads local files only, no network).</div>`; return; }
+  const now = Date.now() / 1000, staleS = (g.stale_days || 90) * 86400;
+  $("#gitSub").textContent = `${g.count} repos (${g.github_count} on GitHub) · ${hkb(g.total_kb)} · checked ${ago(g.ts)}`;
+  let items = g.items.slice();
+  const gq = ($("#gitQ").value || "").trim().toLowerCase();
+  if (gq) items = items.filter(i => (i.github || i.name || "").toLowerCase().includes(gq) || i.path.toLowerCase().includes(gq));
+  if (gitFilter === "github") items = items.filter(i => i.github);
+  if (gitFilter === "attention") items = items.filter(i => i.dirty || (i.ahead || 0) > 0 || i.stashes);
+  if (gitFilter === "stale") items = items.filter(i => (i.last_sync || 0) < now - staleS);
+  if (gitSort === "sync") items.sort((a, b) => (a.last_sync || 0) - (b.last_sync || 0));
+  const max = Math.max(...g.items.map(i => i.kb), 1);
+  const head = `<div class="brew-grid">
+    <div class="mini"><div class="label">Repositories</div><div class="value num">${g.count}</div><div class="note">${g.github_count} GitHub · ${g.count - g.github_count} other / local</div></div>
+    <div class="mini"><div class="label">Disk used</div><div class="value num">${hkb(g.total_kb)}</div><div class="note">${hkb(g.git_kb)} of it in .git history</div></div>
+    <div class="mini"><div class="label">Not synced for ${g.stale_days || 90}+ days</div><div class="value num">${g.stale}</div><div class="note">candidates to remove (re-clone later)</div></div>
+    <div class="mini"><div class="label">With local work</div><div class="value num">${g.dirty_count + g.unpushed_count}</div><div class="note">${g.dirty_count} uncommitted · ${g.unpushed_count} unpushed</div></div></div>`;
+  if (!items.length) { el.innerHTML = head + `<div class="empty">No repository matches this filter.</div>`; return; }
+  el.innerHTML = head + tbl(`<thead><tr><th>Repository</th><th class="r">Size</th><th class="bar-cell"></th><th>Last sync</th><th>Last commit</th><th>State</th><th></th></tr></thead><tbody>${
+    items.map(i => { const stale = (i.last_sync || 0) < now - staleS;
+      const tags = [i.dirty ? `<span class="tag warn">${i.dirty} uncommitted</span>` : "",
+        (i.ahead || 0) > 0 ? `<span class="tag warn">↑ ${i.ahead} unpushed</span>` : "",
+        (i.behind || 0) > 0 ? `<span class="tag">↓ ${i.behind} behind</span>` : "",
+        i.stashes ? `<span class="tag">${i.stashes} stash</span>` : "",
+        !i.remote ? `<span class="tag warn">no remote</span>` : !i.has_upstream ? `<span class="tag">no upstream</span>` : "",
+        !i.dirty && !(i.ahead > 0) && i.has_upstream && !i.stashes ? `<span class="tag good">✓ clean</span>` : ""].join(" ");
+      return `<tr><td><div class="git-name">${i.github ? `<a href="https://github.com/${esc(i.github)}" target="_blank" rel="noopener noreferrer">${esc(i.github)}</a>` : `<b>${esc(i.name)}</b> <span class="note">${esc(i.remote ? i.remote.replace(/^.*@|^https?:\/\//, "") : "local only")}</span>`}</div>
+        <div class="note path">${esc(tilde(i.path))}${i.branch ? ` · ${esc(i.branch)}` : ""}</div></td>
+      <td class="r num">${hkb(i.kb)}<div class="note">.git ${hkb(i.git_kb)}</div></td>
+      <td class="bar-cell"><div class="bar" style="width:${(100 * i.kb / max).toFixed(1)}%"></div></td>
+      <td style="white-space:nowrap">${i.last_sync ? ago(i.last_sync) : `<span class="note">never</span>`}${stale ? ` <span class="tag warn">stale</span>` : ""}</td>
+      <td class="note" style="white-space:nowrap">${i.last_commit ? ago(i.last_commit) : "—"}</td>
+      <td>${tags}</td>
+      <td><div class="actions">${i.remote ? `<button class="small" data-gitfetch="${esc(i.path)}" title="git fetch --all --prune">Fetch</button>` : ""}<button class="small" data-gitgc="${esc(i.path)}" title="git gc --prune=now: repack history">git gc</button><button class="small d-only" data-reveal="${esc(i.path)}">Finder</button><button class="small danger" data-gitrm="${esc(i.path)}">Remove</button></div></td></tr>`; }).join("")}</tbody>`, "fit");
+}
+$("#gitQ").addEventListener("input", () => renderGit());
+$("#gitSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; gitFilter = b.dataset.f; [...$("#gitSeg").children].forEach(x => x.classList.toggle("on", x === b)); renderGit(); };
+$("#gitSort").onclick = e => { const b = e.target.closest("button"); if (!b) return; gitSort = b.dataset.s; [...$("#gitSort").children].forEach(x => x.classList.toggle("on", x === b)); renderGit(); };
+document.addEventListener("click", async e => {
+  const d = e.target.closest("[data-gitfetch],[data-gitgc],[data-gitrm]"); if (!d) return;
+  if (d.dataset.gitfetch) return run("git-fetch", d.dataset.gitfetch);
+  if (d.dataset.gitgc) return run("git-gc", d.dataset.gitgc);
+  const it = ((D && D.git && D.git.items) || []).find(i => i.path === d.dataset.gitrm); if (!it) return;
+  const work = [it.dirty ? `${it.dirty} uncommitted change(s)` : "", (it.ahead || 0) > 0 ? `${it.ahead} unpushed commit(s)` : "", it.stashes ? `${it.stashes} stash(es)` : "", !it.remote ? "no remote" : !it.has_upstream ? "branch without upstream" : ""].filter(Boolean);
+  if (work.length) { toast(`Not removable: ${esc(work.join(", "))}. Commit/push first.`); return; }
+  if (await confirmBox(`Remove the clone ${it.github || it.name}?`, `<p>Moves <b>${esc(tilde(it.path))}</b> (${hkb(it.kb)}) to the Trash. It has no local work, so you can clone it again any time:</p><p><code>git clone ${esc(it.remote)}</code></p><p class="note">Last synced ${ago(it.last_sync)}, last commit ${ago(it.last_commit)}.</p>`, "Move to Trash", true)) run("git-remove", it.path);
+});
+
+// ---------------------------------------------------------------- trash
+function renderTrash(t) {
+  const body = $("#trashBody"); t = t || {};
+  if (t.readable === false) { body.innerHTML = `<div class="empty">${esc(t.error || "Can't read the Trash.")}</div>`; $("#trashEmpty").disabled = true; return; }
+  if (!t.items) { body.innerHTML = `<div class="empty">Not read yet. Click Refresh.</div>`; return; }
+  $("#trashSub").textContent = t.count ? `${hkb(t.total_kb)} in ${t.count} item${t.count > 1 ? "s" : ""} · checked ${ago(t.ts)}` : `empty · checked ${ago(t.ts)}`;
+  $("#trashEmpty").disabled = !t.count;
+  if (!t.count) { body.innerHTML = `<div class="empty">The Trash is empty.</div>`; return; }
+  const max = Math.max(...t.items.map(i => i.kb), 1);
+  body.innerHTML = tbl(`<thead><tr><th>Item</th><th class="r">Size</th><th class="bar-cell"></th><th>Trashed</th><th></th></tr></thead><tbody>${
+    t.items.map(i => `<tr><td><div>${esc(i.name)}${i.is_dir ? "/" : ""}</div>${i.origin ? `<div class="note path">from ${esc(tilde(i.origin))}</div>` : ""}</td>
+      <td class="r num">${hkb(i.kb)}</td><td class="bar-cell"><div class="bar" style="width:${(100 * i.kb / max).toFixed(1)}%"></div></td>
+      <td class="note" style="white-space:nowrap">${ago(i.trashed)}</td>
+      <td><div class="actions">${i.origin ? `<button class="small" data-putback="${esc(i.path)}">Put back</button>` : ""}<button class="small danger" data-trashdel="${esc(i.path)}">Delete</button></div></td></tr>`).join("")}</tbody>`, "fit")
+    + (t.count > t.items.length ? `<div class="note" style="margin-top:8px">Showing the ${t.items.length} biggest of ${t.count} items.</div>` : "");
+}
+async function loadTrash(force = false) { try { const t = await api("/api/trash" + (force ? "?refresh=1" : "")); if (D) D.trash = t; renderTrash(t); } catch (e) { $("#trashBody").innerHTML = `<div class="empty">Couldn't read the Trash: ${esc(e.message || e)}</div>`; } }
+$("#trashRefresh").onclick = () => loadTrash(true);
+$("#trashEmpty").onclick = async () => { const t = (D && D.trash) || {};
+  if (await confirmBox("Empty the Trash?", `<p>Permanently deletes <b>${t.count} item${t.count > 1 ? "s" : ""}</b> and frees about <b>${hkb(t.total_kb || 0)}</b>. This can't be undone.</p><p class="note">Only your own Trash (~/.Trash) is emptied; trash on external drives is left alone.</p>`, "Empty Trash", true)) run("empty-trash"); };
+document.addEventListener("click", async e => {
+  const d = e.target.closest("[data-trashdel],[data-putback]"); if (!d) return;
+  if (d.dataset.trashdel) { const it = ((D && D.trash && D.trash.items) || []).find(i => i.path === d.dataset.trashdel) || { name: d.dataset.trashdel, kb: 0 };
+    if (await confirmBox(`Delete ${it.name} permanently?`, `<p>Frees about <b>${hkb(it.kb)}</b>. This can't be undone.</p>`, "Delete", true)) run("trash-delete", it.path); }
+  else if (d.dataset.putback) run("trash-put-back", d.dataset.putback);
+});
+
+// ---------------------------------------------------------------- logs viewer
+let logSel = "", logSince = 0, logTimer = null;
+function fillLogSelect() {
+  const sel = $("#logSel"); const jobs = (D && D.jobs) || [];
+  const opts = [`<option value="">Choose a log…</option>`, `<option value="agent">Service log (agent.log)</option>`]
+    .concat(jobs.map(j => `<option value="${j.id}">${esc(j.label)} — ${STATUS[j.status] || j.status}, ${ago(j.started || j.created)}</option>`));
+  sel.innerHTML = opts.join(""); sel.value = logSel;
+  if (sel.value !== logSel) sel.value = "";
+}
+function colorize(lines) { return lines.map(l => { const e = esc(l);
+  return /^\$ /.test(l) ? `<span class="cmd">${e}</span>` : /(^\s*!|ERROR|Error|error:|Traceback)/.test(l) ? `<span class="err">${e}</span>` : e; }).join("\n"); }
+async function loadLog(reset = false) {
+  clearTimeout(logTimer); if (!logSel) return;
+  const pre = $("#logView"); if (reset) { pre.innerHTML = ""; logSince = 0; }
+  try {
+    let running = false;
+    if (logSel === "agent") { const r = await api("/api/agent-log?lines=400"); pre.innerHTML = colorize(r.lines) || "(empty)"; running = true; }
+    else { const j = await api(`/api/jobs/${logSel}?since=${logSince}`);
+      if (j.log.length) pre.insertAdjacentHTML("beforeend", (pre.innerHTML ? "\n" : "") + colorize(j.log));
+      if (!pre.innerHTML) pre.textContent = j.status === "queued" ? "Waiting for the job before it to finish…" : "(no output yet)";
+      logSince = j.log_len; running = j.status === "running" || j.status === "queued"; }
+    if ($("#logFollow").checked) pre.scrollTop = pre.scrollHeight;
+    if (running && !document.hidden) logTimer = setTimeout(loadLog, logSel === "agent" ? 5000 : 1000);
+  } catch (e) { pre.textContent = "Couldn't load this log: " + (e.message || e); } }
+function selectLog(id, scroll = false) { logSel = id; fillLogSelect(); $("#logSel").value = id; loadLog(true);
+  if (scroll) openPanel("logs"); }
+$("#logSel").onchange = e => selectLog(e.target.value);
+$("#logCopy").onclick = async () => toast(await copyText($("#logView").textContent) ? "Log copied" : "Couldn't access the clipboard");
+document.addEventListener("click", e => { const b = e.target.closest("[data-showlog]"); if (b && b.dataset.showlog) selectLog(b.dataset.showlog, true); });
+$("#mpDetails").onclick = () => window.scrollTo({ top: 0, behavior: "smooth" });
+
+document.addEventListener("click", async e => { const t = e.target.closest("[data-mise]"); if (!t || t.disabled) return;
+  const m = F(D, "mise"), k = t.dataset.mise;
+  if (k === "upgrade") { const od = m.outdated || [], dirs = new Set(od.flatMap(o => o.dirs || []));
+    if (await confirmBox("Upgrade mise tools?", `<p>Runs <code>mise upgrade</code> in your home folder and in ${dirs.size} project folder${dirs.size === 1 ? "" : "s"}. Each tool moves to the newest version <b>within the range its config asks for</b> (node = "20" → latest 20.x); no config file is changed.</p><ul>${od.slice(0, 10).map(o => `<li>${esc(o.name)} ${esc(o.current || "missing")} → ${esc(o.latest)}</li>`).join("")}</ul>`, "Upgrade")) run("mise-upgrade"); }
+  else if (k === "prune") { const pr = m.prunable || [];
+    if (await confirmBox(`Remove ${pr.length} unused mise version${pr.length === 1 ? "" : "s"}?`, `<p>Runs <code>mise prune --tools</code>: deletes installed versions that no config mise has seen asks for (about <b>${hkb(m.prunable_kb)}</b>). A project mise never loaded, or <code>mise exec tool@version</code> one-offs, don't count: they'll be reinstalled when needed.</p><ul>${pr.slice(0, 10).map(p => `<li>${esc(p.tool)}@${esc(p.version)} · ${hkb(p.kb)}</li>`).join("")}</ul>`, "Prune", true)) run("mise-prune"); }
+  else if (k === "self-update") { if (await confirmBox("Update mise itself?", `<p>Runs <code>mise self-update</code> (downloads the latest signed release from GitHub).</p>`, "Update")) run("mise-self-update"); }
+});
+$("#appVer").onclick = () => { run("updates-check"); toast("Checking for updates…"); };
+$("#scanBtn").onclick = async () => { const j = await api("/api/run", { action: "scan" }); progWasActive = true; setTimeout(pollProgress, 300); };
+const BREWED_FALLBACK = "brew update && brew upgrade -q; brew doctor; brew autoremove && brew cleanup -s --prune=30 && omz update && omz reload";
+let toastT = null;
+function toast(html) { const t = $("#toast"); t.innerHTML = html; t.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), 3200); }
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) {
+    const ta = document.createElement("textarea"); ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0"; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand("copy"); } catch (_) {} ta.remove(); return ok; } }
+$("#copyBrewed").onclick = async () => {
+  const b = (D && D.brew) || {}; const cmd = b.alias ? (b.alias_name || "brewed") : BREWED_FALLBACK;
+  toast(await copyText(cmd) ? `Copied <code>${esc(cmd.length > 40 ? cmd.slice(0, 40) + "…" : cmd)}</code> — paste it in Terminal` : "Couldn't access the clipboard"); };
+$("#brewedBtn").onclick = async () => {
+  const b = D.brew;
+  if (await confirmBox("Run brewed?", `<p>Runs, step by step:</p><ol style="font-family:var(--mono);font-size:12px"><li>brew update</li><li>brew upgrade -q${b.outdated ? ` <span class="dim">(${b.outdated.length} outdated)</span>` : ""}</li><li>brew doctor</li><li>brew autoremove</li><li>brew cleanup -s --prune=30</li><li>omz update</li></ol><p class="note">Apps being upgraded may be closed and reopened. <code>omz reload</code> is skipped (it only works in a terminal); use “Copy for Terminal” to run your full alias instead.</p>`, "Run")) run("brewed"); };
+$("#growthSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; growthDays = +b.dataset.d; growthAll = false; [...$("#growthSeg").children].forEach(x => x.classList.toggle("on", x === b)); renderGrowth(); };
+$("#growthBody").addEventListener("click", e => { if (e.target.id === "growthMore") { growthAll = !growthAll; renderGrowth(); } });
+$("#tree").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches(".tree-row")) { e.preventDefault(); e.target.click(); } });
+$("#appsSeg").onclick = e => { const b = e.target.closest("button"); if (!b) return; appsFilter = b.dataset.f; [...$("#appsSeg").children].forEach(x => x.classList.toggle("on", x === b)); renderApps(); };
+let rzT = null; window.addEventListener("resize", () => { clearTimeout(rzT); rzT = setTimeout(() => D && renderFreeChart(), 80); });
+
+async function refresh() { try { D = await api("/api/overview"); render(); loadTree(treePath);
+    fillLogSelect(); }
+  catch (e) { $("#kpis").innerHTML = `<div class="card kpi"><span class="label">Can't reach the disk-health service</span><span class="hint">${esc(e.message)}</span></div>`; } }
+// ---------------------------------------------------------------- accordion panels
+// Every section in #panels shows a compact summary when collapsed and its full content when expanded.
+// Only one panel is expanded at a time; nav links, alerts and KPI tiles expand their panel.
+const SUMMARY = {};          // panel id -> fn(D) returning summary HTML
+let openId = null, treeRootItems = null;
+document.addEventListener("click", e => { if (e.target.id === "alertsMore") { alertsAll = !alertsAll; render(); } });
+document.addEventListener("click", async e => { const b = e.target.closest("[data-copycmd]"); if (!b) return;
+  toast(await copyText(b.dataset.copycmd) ? "Update command copied: paste it in Terminal" : "Couldn't access the clipboard"); });
+const sStat = (v, l, cls = "") => `<div class="ps-stat ${cls}"><b>${v}</b><span>${esc(l)}</span></div>`;
+const sLines = rows => rows.length ? `<div class="ps-lines">${rows.map(([n, v, cls]) => `<div class="ps-line"><span class="n" title="${esc(n)}">${esc(n)}</span><span class="v ${cls || ""}">${v}</span></div>`).join("")}</div>` : "";
+const sWrap = (stats, lines = "") => `<div class="ps-stats">${stats.join("")}</div>${lines}`;
+const sEmpty = t => `<div class="ps-empty">${t}</div>`;
+
+function panelize(sec) {
+  if (!sec || sec.classList.contains("panel")) return;
+  sec.classList.add("panel");
+  const head = sec.querySelector(":scope > .card-head");
+  const full = document.createElement("div"); full.className = "panel-full";
+  [...sec.children].filter(c => c !== head).forEach(c => full.appendChild(c));
+  const sum = document.createElement("div"); sum.className = "panel-summary";
+  sec.append(sum, full);
+  if (sec.id === "spacemap" || sec.id === "logs") full.classList.add("no-scroll");
+  head.addEventListener("click", e => { if (e.target.closest("button, a, input, select, label, .seg")) return; togglePanel(sec.id); });
+  head.setAttribute("role", "button"); head.tabIndex = 0;
+  head.addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target === head) { e.preventDefault(); togglePanel(sec.id); } });
+  if (openId === sec.id) sec.classList.add("open");
+}
+function togglePanel(id) { openPanel(openId === id ? null : id); }
+function openPanel(id, scroll = true) {
+  if (id && !document.querySelector(`#panels > #${CSS.escape(id)}`)) return;
+  openId = id || null;
+  document.querySelectorAll("#panels > .panel").forEach(p => p.classList.toggle("open", p.id === openId));
+  try { localStorage.setItem("dh.open", openId || ""); } catch (e) {}
+  history.replaceState(null, "", openId ? "#" + openId : location.pathname);
+  if (openId) {
+    const p = PANELS.find(x => x.id === openId); if (p && D) renderPanel(p);
+    if (openId === "space" && !treePath) loadTree(null);
+    window.dispatchEvent(new Event("resize"));   // canvases / treemap measure their width again
+    if (scroll) requestAnimationFrame(() => document.getElementById(openId).scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+}
+window.addEventListener("hashchange", () => { const id = location.hash.slice(1); if (id && id !== openId) openPanel(id); });
+document.addEventListener("click", e => { const a = e.target.closest('a[href^="#"]'); if (!a) return; const id = a.getAttribute("href").slice(1);
+  if (document.querySelector(`#panels > #${CSS.escape(id)}`)) { e.preventDefault(); openPanel(id); } });
+function renderSummaries() {
+  document.querySelectorAll("#panels > .panel").forEach(sec => {
+    const fn = SUMMARY[sec.id]; const box = sec.querySelector(":scope > .panel-summary"); if (!box) return;
+    let html = "";
+    try { html = fn ? fn(D) : ""; } catch (err) { console.error(sec.id, err); }
+    if (!html) { const sub = sec.querySelector(":scope > .card-head .sub"); html = sEmpty(esc(sub ? sub.textContent : "")); }
+    box.innerHTML = html; });
+}
+
+const gb = kb => hkb(kb || 0);
+SUMMARY.growth = D => { const g = D.growth7 || {}; if (!g.ready) return sEmpty(esc(g.reason || "Needs two scans to compare."));
+  const ab = g.items.filter(i => i.abnormal).length, tot = g.items.reduce((a, i) => a + i.delta_kb, 0);
+  return sWrap([sStat(ab, "growing abnormally", ab ? "warn" : "good"), sStat("+" + gb(tot), `in ${g.window_days} days (top folders)`)],
+    sLines(g.items.slice(0, 3).map(i => [tilde(i.path), "+" + gb(i.delta_kb), "delta-up"]))); };
+SUMMARY.space = () => { if (!treeRootItems) return sEmpty("Open to explore folders by size.");
+  return sLines(treeRootItems.slice(0, 4).map(i => [tilde(i.path), gb(i.kb)])); };
+SUMMARY.caches = D => { const c = D.caches || {}; if (!c.items) return sEmpty("Not measured yet.");
+  return sWrap([sStat(gb(c.total_kb), "cleanable"), sStat(c.items.length, "caches")], sLines(c.items.slice(0, 3).map(i => [i.name, gb(i.kb)]))); };
+SUMMARY.apps = D => { const a = D.apps || {}; if (!a.items) return sEmpty("Not scanned yet.");
+  const un = a.items.filter(i => i.unused);
+  return sWrap([sStat(a.unused_count, `unused ${D.config.unused_app_days}+ days`, a.unused_count ? "warn" : "good"), sStat(gb(a.unused_kb), "could be freed"), sStat(a.items.length, "apps")],
+    sLines(un.slice(0, 3).map(i => [i.name, gb(i.kb)]))); };
+SUMMARY.trash = D => { const t = D.trash || {}; if (!t.items) return sEmpty("Not read yet.");
+  return t.count ? sWrap([sStat(gb(t.total_kb), "in the Trash"), sStat(t.count, "items")]) : sEmpty("The Trash is empty."); };
+SUMMARY.brew = D => { const b = D.brew || {}, m = F(D, "mise");
+  const ms = m.available ? [sStat((m.outdated || []).length, "mise outdated", (m.outdated || []).length ? "warn" : "good"),
+    sStat(gb(m.prunable_kb), "mise prunable", m.prunable_kb >= 1024 ** 2 ? "warn" : "")] : [];
+  if (b.available === false) return ms.length ? sWrap(ms) : sEmpty("Homebrew and mise not installed.");
+  if (!b.outdated) return ms.length ? sWrap(ms) : sEmpty(b.pending ? "Checking…" : "Not checked yet.");
+  return sWrap([sStat(b.outdated.length, "brew outdated", b.outdated.length ? "warn" : "good"), sStat(b.doctor.length ? b.doctor.length : "OK", b.doctor.length ? "doctor warnings" : "brew doctor", b.doctor.length ? "warn" : "good"),
+    sStat(b.orphans.length, "orphans"), sStat(esc(b.cleanup_reclaimable), "cleanup"), sStat(b.unused_leaves || 0, "unused tools"), ...ms]); };
+SUMMARY.git = D => { const g = D.git || {}; if (!g.items) return sEmpty("Not scanned yet.");
+  return sWrap([sStat(g.count, "repositories"), sStat(gb(g.total_kb), "on disk"), sStat(g.stale, `not synced ${g.stale_days || 90}+ d`, g.stale ? "warn" : ""), sStat(g.dirty_count + g.unpushed_count, "with local work")]); };
+SUMMARY.activity = D => { const j = (D.jobs || []).slice(0, 3); return (D.freed_30d_kb ? sWrap([sStat(gb(D.freed_30d_kb), "freed in 30 days")]) : "") +
+  sLines(j.map(x => [x.label, `${STATUS[x.status] || x.status} · ${ago(x.started || x.created)}`])); };
+SUMMARY.logs = D => { const j = (D.jobs || [])[0]; return sEmpty(j ? `Last job: <b>${esc(j.label)}</b> — ${esc(STATUS[j.status] || j.status)}, ${ago(j.started || j.created)}` : "Full output of every job and the service log."); };
+const F = (D, id) => (D.features || {})[id] || {};
+SUMMARY.docker = D => { const d = F(D, "docker"); if (d.available === undefined) return sEmpty("Not scanned yet.");
+  if (!d.available) return sEmpty(esc(d.reason || "Docker isn't running") + (d.vm_disk ? ` · VM disk ${hb(d.vm_disk.allocated)}` : ""));
+  const t = d.totals || {}, c = t.containers || {};
+  return sWrap([sStat(hb((d.vm_disk || {}).allocated || d.used), "VM disk"), sStat(hb(d.reclaimable), "reclaimable", d.reclaimable > 5e9 ? "warn" : ""),
+    sStat(`${(t.images || {}).count || 0}`, "images"), sStat(`${c.running || 0}/${c.count || 0}`, "containers running"), sStat(hb((t.volumes || {}).size || 0), "volumes")]); };
+SUMMARY.toolchains = D => { const d = F(D, "toolchains"); if (!d.items) return sEmpty("Not scanned yet.");
+  return sWrap([sStat(d.count, "versions"), sStat(gb(d.total_kb), "on disk"), sStat(d.unused_count, "unused", d.unused_count ? "warn" : "good"), sStat(gb(d.unused_kb), "could be freed")]); };
+SUMMARY.storage = D => { const d = F(D, "storage"); if (!d.hidden && !d.folders) return sEmpty("Not scanned yet."); const h = d.hidden || {};
+  const big = (d.folders || []).slice().sort((a, b) => (b.kb || 0) - (a.kb || 0))[0];
+  return sWrap([h.container_size ? sStat(hb(h.container_free), `free of ${hb(h.container_size)}`) : "", sStat(h.snapshot_count || 0, "local snapshots", h.snapshot_count ? "warn" : ""),
+    sStat(gb(d.total_kb), "in big folders"), ...spotlightStats(D)].filter(Boolean), big ? sLines([[big.title, big.kb == null ? "?" : gb(big.kb)]]) : ""); };
+function spotlightStats(D) { const sp = F(D, "spotlight"); if (!sp.ts) return [];
+  const todo = (sp.suggestions || []).filter(x => !x.excluded).length;
+  return [sp.index_kb != null ? sStat(gb(sp.index_kb), "Spotlight index") : "", todo ? sStat(todo, "folders to exclude from Spotlight", "warn") : ""]; }
+SUMMARY.duplicates = D => { const d = F(D, "duplicates"); if (!d.ts) return sEmpty("Not searched yet. Open and click <b>Find duplicates</b>.");
+  return sWrap([sStat(hb(d.total_wasted || 0), "wasted", d.total_wasted > 1e9 ? "warn" : ""), sStat(d.group_count || 0, "groups"), sStat(ago(d.ts), "last search")]); };
+SUMMARY.spacemap = () => sEmpty("Treemap of the latest scan, colored by size or growth. Open to explore.");
+
+// ---------------------------------------------------------------- cancel
+document.addEventListener("click", async e => {
+  const c = e.target.closest("[data-cancel]"); if (!c || !c.dataset.cancel) return; e.preventDefault();
+  try { const j = await api("/api/cancel", { id: +c.dataset.cancel }); toast(j.status === "cancelled" ? `Cancelled: ${esc(j.label)}` : `Cancelling ${esc(j.label)}…`); setTimeout(pollProgress, 300); }
+  catch (err) { toast("Couldn't cancel: " + esc(err.message || err)); } });
+
+// ---------------------------------------------------------------- feature panels (web/static/panel-*.js)
+// A panel file calls DH.registerPanel({ id, title, nav, render(data, D, el), init(el) }).
+//   id     : section id and the feature NAME on the server (overview.features[id] is passed as `data`)
+//   el     : { section, sub, tools, body } elements of the card the core creates for it
+const PANELS = [];
+window.DH = {
+  api, run, confirmBox, toast, copyText, esc, hkb, hb, ago, dur, tilde, tbl, fmtDate,
+  get D() { return D; },
+  refresh,
+  registerPanel(p) {
+    const sec = document.createElement("section"); sec.className = "card"; sec.id = p.id;
+    sec.innerHTML = `<div class="card-head"><h2>${esc(p.title)}</h2><span class="sub"></span><span class="spacer"></span><div class="tools" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center"></div></div><div class="body"><div class="panel-loading">Loading…</div></div>`;
+    const anchor = document.getElementById(p.before || "activity");
+    anchor.parentNode.insertBefore(sec, anchor);
+    const a = document.createElement("a"); a.href = "#" + p.id; a.textContent = p.nav || p.title;
+    const navAct = document.querySelector('nav.sections a[href="#' + (p.before || "activity") + '"]');
+    navAct.parentNode.insertBefore(a, navAct);
+    p.el = { section: sec, sub: sec.querySelector(".sub"), tools: sec.querySelector(".tools"), body: sec.querySelector(".body") };
+    PANELS.push(p);
+    panelize(sec);
+    try { p.init && p.init(p.el); } catch (err) { console.error(p.id, err); }
+    if (D) { renderPanel(p); renderSummaries(); }
+  },
+};
+function renderPanel(p) { try { p.render && p.render((D.features || {})[p.id] || {}, D, p.el); } catch (err) { console.error(p.id, err); p.el.body.innerHTML = `<div class="empty">This panel failed to render: ${esc(err.message)}</div>`; } }
+async function loadPanels() {
+  try { const files = await api("/api/panels");
+    for (const f of files) await new Promise(res => { const sc = document.createElement("script"); sc.src = "/static/" + f; sc.onload = sc.onerror = res; document.body.appendChild(sc); });
+  } catch (e) { console.error("panels", e); } }
+
+document.querySelectorAll("#panels > section.card").forEach(panelize);
+{ let want = location.hash.slice(1); if (!want) { try { want = localStorage.getItem("dh.open") || ""; } catch (e) {} } if (want) openId = want;
+  document.querySelectorAll("#panels > .panel").forEach(p => p.classList.toggle("open", p.id === openId)); }
+refresh(); pollProgress(); loadPanels().then(() => { if (openId) setTimeout(() => openPanel(openId), 300); }); setTimeout(() => loadTrash(), 1500); setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+</script>
+</body>
+</html>

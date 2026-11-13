@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Disk Health</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main class="card" aria-live="polite">
+    <header class="head">
+      <span class="eyebrow">Free space</span>
+      <span class="state" id="state"></span>
+    </header>
+
+    <section id="online" hidden>
+      <div class="hero">
+        <span class="big" id="free">—</span>
+        <span class="pct" id="pct"></span>
+      </div>
+      <div class="meter" role="meter" id="meter" aria-label="Disk used" aria-valuemin="0" aria-valuemax="100">
+        <div class="meter-fill" id="meter-fill"></div>
+      </div>
+      <p class="sub" id="total"></p>
+      <div id="scan" class="scan" hidden>
+        <p class="sub"><strong id="scan-title">Scanning</strong> <span id="scan-text"></span></p>
+        <div class="meter"><div class="meter-fill" id="scan-fill"></div></div>
+      </div>
+
+      <h2 class="list-title" id="alerts-title">Alerts</h2>
+      <ul class="alerts" id="alerts"></ul>
+      <p class="empty" id="no-alerts" hidden>No alerts — all good.</p>
+    </section>
+
+    <section id="offline" class="offline" hidden>
+      <p class="offline-title">Service not running.</p>
+      <p class="sub">In Terminal:</p>
+      <div class="cmd-row">
+        <code id="cmd">launchctl kickstart -k gui/$(id -u)/com.diskhealth.agent</code>
+        <button type="button" class="ghost small" id="copy">Copy</button>
+      </div>
+      <p class="sub" id="offline-detail"></p>
+    </section>
+
+    <section id="loading" class="sub">Checking…</section>
+
+    <div class="actions">
+      <button type="button" class="primary" id="open">Open dashboard</button>
+      <button type="button" class="ghost" id="refresh">Refresh</button>
+    </div>
+
+    <footer class="foot">
+      <span id="checked">Not checked yet</span>
+      <details id="settings">
+        <summary>Settings</summary>
+        <form id="settings-form" class="settings">
+          <label for="port">Service port</label>
+          <div class="port-row">
+            <input id="port" name="port" type="number" min="1" max="65535" inputmode="numeric" required>
+            <button type="submit" class="ghost small">Save</button>
+          </div>
+          <span class="hint" id="port-hint">Default 7777</span>
+        </form>
+      </details>
+    </footer>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>

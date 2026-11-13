@@ -1,0 +1,47 @@
+{
+  "_comment": "Copied to ~/Library/Application Support/disk-health/config.json on first install. Keys starting with _ are ignored. Restart after editing: launchctl kickstart -k gui/$(id -u)/com.diskhealth.agent",
+
+  "port": 7777,
+
+  "_comment_scan": "du-based growth tracking. {brew_prefix} is replaced by /opt/homebrew or /usr/local. Entries deeper than scan_depth or smaller than scan_min_mb are not kept in history. iCloud/CloudStorage are excluded to avoid triggering downloads.",
+  "scan_roots": ["~", "/Applications", "/Library", "{brew_prefix}"],
+  "scan_depth": 5,
+  "scan_min_mb": 50,
+  "scan_exclude": ["~/Library/Mobile Documents", "~/Library/CloudStorage"],
+
+  "_comment_schedule": "Scheduled brew runs only CHECK (update metadata, outdated, doctor, autoremove/cleanup dry-runs). Upgrades only happen when you click 'Run brewed'.",
+  "scan_every_hours": 24,
+  "brew_check_every_hours": 24,
+  "free_sample_every_minutes": 60,
+
+  "_comment_alerts": "Free space thresholds are % of the volume. Growth alerts fire when a folder grows by more than growth_alert_gb_7d GB AND by growth_alert_ratio_7d (25%) in 7 days.",
+  "free_warn_percent": 15,
+  "free_critical_percent": 8,
+  "growth_alert_gb_7d": 2.0,
+  "growth_alert_ratio_7d": 0.25,
+  "cache_alert_gb": 20,
+  "mise_prune_alert_gb": 1,
+  "unused_app_days": 90,
+  "unused_tool_days": 120,
+
+  "brew_cleanup_prune_days": 30,
+  "omz_dir": "~/.oh-my-zsh",
+  "zsh_history": "~/.zsh_history",
+
+  "_comment_extra_caches": "Your own cache folders. clean: 'contents' empties the folder (the folder itself is kept) or 'cmd' runs the command in 'cmd' (with 'needs': binary name). risk: safe | rebuild | redownload. Only list folders whose contents are safe to lose.",
+  "update_check": true,
+  "update_url": "",
+  "update_page": "",
+
+  "extra_caches": [
+    {
+      "id": "my-tool",
+      "name": "My tool cache",
+      "group": "Custom",
+      "paths": ["~/Library/Caches/my-tool"],
+      "clean": "contents",
+      "risk": "safe",
+      "note": "Example entry: recreated automatically by my-tool on next launch."
+    }
+  ]
+}

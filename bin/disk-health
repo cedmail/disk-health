@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# disk-health: manage the Disk Health background service.
+#
+#   disk-health setup [--open]   install / update the service (LaunchAgent + DiskHealth.app), then start it
+#   disk-health open             open the dashboard in your browser
+#   disk-health status           is it running? free space and alerts
+#   disk-health restart [--logs] restart the service (and follow the log)
+#   disk-health stop             stop it until the next login or `disk-health restart`
+#   disk-health logs             follow the service log (Ctrl+C to stop)
+#   disk-health extension        show the folder to load in chrome://extensions (and reveal it in Finder)
+#   disk-health uninstall        remove the service (asks before deleting your data)
+#   disk-health version
+set -euo pipefail
+
+# Resolve the real location (Homebrew links bin/disk-health -> Cellar/…/libexec/bin/disk-health).
+SRC="${BASH_SOURCE[0]}"
+while [ -L "$SRC" ]; do
+  DIR="$(cd -P "$(dirname "$SRC")" && pwd)"
+  SRC="$(readlink "$SRC")"
+  case "$SRC" in /*) ;; *) SRC="$DIR/$SRC" ;; esac
+done
+ROOT="$(cd -P "$(dirname "$SRC")/.." && pwd)"
+STABLE="$ROOT"   # what to show/give to other apps: Homebrew's opt/ path survives upgrades
+case "$ROOT" in
+  */Cellar/disk-health/*/libexec) [ -d "${ROOT%%/Cellar/*}/opt/disk-health/libexec" ] && STABLE="${ROOT%%/Cellar/*}/opt/disk-health/libexec" ;;
+esac
+
+DATA_DIR="${DISK_HEALTH_DATA:-$HOME/Library/Application Support/disk-health}"
+LOG="$DATA_DIR/logs/agent.log"
+PORT=7777
+if [ -f "$DATA_DIR/config.json" ]; then
+  PORT="$(/usr/bin/python3 -c 'import json,sys
+try: print(int(json.load(open(sys.argv[1])).get("port", 7777)))
+except Exception: print(7777)' "$DATA_DIR/config.json" 2>/dev/null || echo 7777)"
+fi
+URL="http://127.0.0.1:$PORT"
+
+usage() { sed -n '2,13p' "$ROOT/bin/disk-health" | sed 's/^# \{0,1\}//'; }
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+case "$cmd" in
+  setup|install)   exec "$ROOT/install.sh" "$@" ;;
+  restart)         exec "$ROOT/restart.sh" "$@" ;;
+  stop)            exec "$ROOT/restart.sh" --stop ;;
+  uninstall)       exec "$ROOT/uninstall.sh" "$@" ;;
+  open)            open "$URL" ;;
+  logs)            echo "--- $LOG (Ctrl+C to stop) ---"; exec tail -n 40 -f "$LOG" ;;
+  version|--version|-v) cat "$ROOT/VERSION" ;;
+  extension)
+    echo "Chrome: chrome://extensions > Developer mode > Load unpacked > select:"
+    echo "  $STABLE/extension"
+    command -v open >/dev/null 2>&1 && open -R "$STABLE/extension/manifest.json" || true ;;
+  status)
+    if S="$(curl -sf --max-time 3 "$URL/api/status")"; then
+      printf '%s' "$S" | /usr/bin/python3 -c 'import json,sys
+d = json.load(sys.stdin); p = d.get("progress") or {}
+print("Disk Health %s running on %s" % (d.get("version", "?"), sys.argv[1]))
+busy = ", busy %d%%" % round(100 * (p.get("pct") or 0)) if p.get("active") else ""
+print("%s free (%s%%), status: %s%s" % (d.get("free_h", "?"), d.get("free_pct", "?"), d.get("level", "?"), busy))
+for a in d.get("alerts") or []:
+    if a.get("level") != "info":
+        print("  [%s] %s" % (a.get("level"), a.get("title")))' "$URL"
+    else
+      echo "Not answering on $URL."
+      [ -f "$HOME/Library/LaunchAgents/com.diskhealth.agent.plist" ] \
+        && echo "Try: disk-health restart --logs" || echo "Not installed yet: disk-health setup"
+      exit 1
+    fi ;;
+  help|-h|--help)  usage ;;
+  *) echo "Unknown command: $cmd" >&2; usage >&2; exit 2 ;;
+esac
