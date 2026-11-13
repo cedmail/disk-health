@@ -41,6 +41,15 @@ if [ -d .git ] && command -v git >/dev/null 2>&1; then
   fi
 fi
 
+# The repo's extension/manifest.json is the one Homebrew and git checkouts install
+# (`disk-health extension` points at it), so it is part of the release, not a build artefact.
+# Only the staged copy used to be rewritten below, and the repo copy sat at 1.0.0 through two
+# releases. Refuse to build rather than ship two different version numbers again.
+MANIFEST_VERSION="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["version"])' extension/manifest.json)"
+EXPECTED="$(python3 -c 'import sys; print(".".join(x for x in sys.argv[1].split("-")[0].split(".") if x.isdigit()) or "1.0.0")' "$VERSION")"
+[ "$MANIFEST_VERSION" = "$EXPECTED" ] || die "extension/manifest.json says $MANIFEST_VERSION but VERSION says $VERSION.
+       Bump it with VERSION:  python3 -c 'import json; p=\"extension/manifest.json\"; m=json.load(open(p)); m[\"version\"]=\"$EXPECTED\"; open(p,\"w\").write(json.dumps(m, indent=2)+chr(10))'"
+
 echo "==> Copying files ($NAME)"
 mkdir -p "$STAGE"
 # Everything except local/build stuff.

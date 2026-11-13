@@ -1,10 +1,17 @@
 {
   "manifest_version": 3,
   "name": "Disk Health",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Shows free disk space from the local Disk Health service and alerts you when it needs attention.",
-  "permissions": ["alarms", "notifications", "storage"],
-  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "permissions": [
+    "alarms",
+    "notifications",
+    "storage"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },

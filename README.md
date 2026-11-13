@@ -43,8 +43,8 @@ disk-health status | open | restart [--logs] | stop | logs | extension | uninsta
 
 ```bash
 cd ~/Downloads
-unzip disk-health-1.0.0.zip
-cd disk-health-1.0.0 && ./install.sh --open
+unzip disk-health-1.3.0.zip
+cd disk-health-1.3.0 && ./install.sh --open
 ```
 
 The installer copies the code to `~/Library/Application Support/disk-health/app` and runs it from there, so
