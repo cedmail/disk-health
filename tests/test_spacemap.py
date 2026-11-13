@@ -7,14 +7,11 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from pathlib import Path
 
-TMP = Path(tempfile.mkdtemp(prefix="dh-spacemap-"))
-if "diskhealth" not in sys.modules:  # alone: private HOME / data dir (diskhealth reads them once, at import)
-    (TMP / "home").mkdir()
-    (TMP / "data").mkdir()
-    os.environ["HOME"] = str(TMP / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(TMP / "data")
+TMP = Path(tempfile.mkdtemp(prefix="dh-spacemap-")).resolve()
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from diskhealth import config, db  # noqa: E402
@@ -24,6 +21,9 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("spacemap")
     # Inside `unittest discover` other modules share the package: point the db at a private file so these
     # snapshots never leak into (or depend on) theirs.
     with db._lock:

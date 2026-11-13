@@ -21,7 +21,7 @@ class DiskHealth < Formula
     libexec.install Dir["*"] - %w[Formula tests dist docs]
     # Launcher for Full Disk Access; `disk-health setup` copies it to ~/Applications/DiskHealth.app,
     # only when launcher.c changed (a new binary would lose the Full Disk Access grant).
-    system ENV.cc, "-O2", "-Wall", "-o", libexec/"launcher/DiskHealth", libexec/"launcher/launcher.c"
+    system ENV.cc, "-O2", "-Wall", "-Wextra", "-o", libexec/"launcher/DiskHealth", libexec/"launcher/launcher.c"
     (libexec/"launcher/DiskHealth.sha256").write Digest::SHA256.file(libexec/"launcher/launcher.c").hexdigest
     chmod 0755, Dir[libexec/"*.sh"] + [libexec/"bin/disk-health"]
     bin.install_symlink libexec/"bin/disk-health"

@@ -163,9 +163,36 @@ the versions projects use. If mise was installed with Homebrew, `brew upgrade` u
   Apps installed with a cask are removed with `brew uninstall --cask --zap`.
 - Only brew *leaf* formulae (nothing depends on them) can be removed.
 - Docker cleanup uses `docker system prune` / `builder prune`; **volumes are never touched**.
-- The server listens on `127.0.0.1` only. It checks the `Host` header (anti DNS-rebinding);
-  state-changing POST requests require a random token (stored with mode 600 in the data folder)
-  and a same-origin `Origin`.
+- A folder is only emptied if it is inside your home folder and is not one of the protected
+  folders (`~`, `~/Documents`, `~/Desktop`, `~/Downloads`, `~/Library`, …). Both checks compare
+  **inodes, not path strings**: on a case-insensitive volume `~/documents` and `~/Documents` are
+  the same folder, and a string comparison would not notice.
+
+### The web server
+
+- Listens on `127.0.0.1` only, and checks the `Host` header on every request (anti DNS-rebinding:
+  a page on `evil.example` resolving to 127.0.0.1 still sends its own `Host`).
+- State-changing POSTs require a random token (mode 600 in the data folder, compared in constant
+  time). A web page cannot attach that header cross-origin — it forces a preflight that is never
+  answered. The token is reissued if its file is ever readable by anyone but the owner.
+- POSTs are also refused on a mismatched `Origin`, or a `Sec-Fetch-Site` other than `same-origin`.
+  A client that sends neither (curl, a script) is allowed: the token is what protects it.
+- The dashboard's inline script runs under a per-response CSP nonce, so `script-src` does not need
+  `'unsafe-inline'`; `base-uri`, `form-action`, `object-src` and `frame-ancestors` are all closed.
+  Every response also carries `nosniff`, `Referrer-Policy: no-referrer` and the cross-origin
+  isolation headers.
+
+### The launcher
+
+`~/Applications/DiskHealth.app` is the process that holds Full Disk Access, so it keeps its job
+narrow: it checks that the program it was told to run is an absolute path to an executable file,
+removes `DYLD_*` and `LD_PRELOAD` from the environment it hands to Python, starts it with default
+signal dispositions, and forwards SIGTERM/INT/HUP. It never reads or writes a file.
+
+Scope worth stating: scrubbing `DYLD_*` protects Python and everything Python runs, not the
+launcher's own process — dyld acts before `main()` and only ignores those variables for a
+Developer ID signature, which an ad-hoc signature is not. Setting the agent's environment already
+requires write access to the LaunchAgent plist in your home folder.
 
 ## How "unused" is determined
 
@@ -274,6 +301,31 @@ panel or the bar under the header; cancelling also stops the command it runs (du
 
 Feature modules live in `diskhealth/features/` (see the contract in its `__init__.py`) with their dashboard
 side in `web/static/panel-<name>.js` (`DH.registerPanel`). They are discovered automatically.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests -t .        # the whole suite, one process
+python3 -m unittest tests.test_engine -v          # one module
+```
+
+No dependencies and no network. The engine tests run on Linux too, against fake `brew`, `docker`
+and `mdls` binaries on `PATH`; `tests/test_launcher.py` needs a C compiler and is skipped without
+one. Each module gets its own `$HOME` and data folder from `tests/_env.py`, so the suite does not
+depend on the order modules are imported in.
+
+A note on one of them: `test_sigterm_in_the_spawn_window_does_not_orphan_the_child` compiles a
+second, deliberately broken launcher and asserts that it *fails* the same check. A race test that
+has never been watched to fail is not a regression test.
+
+### Working on paths
+
+Use `util.dedupe_dirs` / `util.scan_roots` for any list of folders to scan, and `util.is_under` /
+`util.same_dir` to ask whether a path is inside or equal to another. Do not compare
+`os.path.realpath()` strings: realpath resolves symlinks but **not letter case**, and macOS
+volumes are case-insensitive by default, so `~/projects` and `~/Projects` compare unequal while
+being the same directory. That mistake has cost this project a doubled Git scan and a
+protected-folder check that silently failed open.
 
 ## License
 

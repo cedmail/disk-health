@@ -9,7 +9,7 @@ import threading
 import time
 
 from . import config, db, progress as live
-from .util import IS_MAC, parse_du, run_out
+from .util import IS_MAC, parse_du, run_out, scan_roots
 
 
 # ---------------------------------------------------------------- free space
@@ -98,10 +98,9 @@ def take_snapshot(progress=print) -> int:
     cfg = config.load()
     depth, min_kb = int(cfg["scan_depth"]), int(cfg["scan_min_mb"]) * 1024
     excludes = [config.expand(e) for e in cfg["scan_exclude"]]
-    roots = [r.rstrip("/") or "/" for r in (config.expand(x) for x in cfg["scan_roots"]) if r and os.path.isdir(r)]
-    roots = list(dict.fromkeys(roots))  # de-duplicate, keep order
-    # Drop roots nested in another root (e.g. ~ when /Users is also a root)
-    roots = [r for r in roots if not any(r != o and r.startswith(o.rstrip("/") + "/") for o in roots)]
+    # De-duplicate and un-nest by inode (scan_roots): string comparison misses ~/projects vs
+    # ~/Projects on a case-insensitive volume, and would du the same tree twice.
+    roots = scan_roots(r.rstrip("/") or "/" for r in (config.expand(x) for x in cfg["scan_roots"]) if r)
     t0 = time.time()
     snap_id = db.execute("INSERT INTO snapshots (ts, duration_s, roots) VALUES (?,?,?)",
                          (int(t0), 0, ",".join(roots))).lastrowid

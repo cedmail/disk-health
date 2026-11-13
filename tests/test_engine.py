@@ -5,6 +5,7 @@
 import http.client
 import json
 import os
+import re
 import shutil
 import stat
 import sys
@@ -15,19 +16,27 @@ import time
 import unittest
 from pathlib import Path
 
+from tests import _env
+
 # ---------------------------------------------------------------- environment (before importing diskhealth)
-TMP = Path(tempfile.mkdtemp(prefix="dh-test-"))
+TMP = Path(tempfile.mkdtemp(prefix="dh-test-")).resolve()
 HOME = TMP / "home"
 DATA = TMP / "data"
 BIN = TMP / "bin"
 PREFIX = TMP / "brew-prefix"
 OUTSIDE = TMP / "outside"
-for d in (HOME, DATA, BIN, PREFIX, OUTSIDE):
+for d in (BIN, PREFIX, OUTSIDE):
     d.mkdir(parents=True)
-os.environ["HOME"] = str(HOME)
-os.environ["DISK_HEALTH_DATA"] = str(DATA)
-os.environ["PATH"] = f"{BIN}{os.pathsep}{os.environ.get('PATH', '')}"
+for d in (HOME, DATA):
+    d.mkdir(parents=True, exist_ok=True)
 os.environ["FAKE_PREFIX"] = str(PREFIX)
+
+
+def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("engine", root=TMP)
+    os.environ["PATH"] = f"{BIN}{os.pathsep}{os.environ.get('PATH', '')}"
 
 OLD = int(time.time()) - 400 * 86400  # install time of an unused formula
 RECENT = int(time.time()) - 2 * 86400
@@ -158,7 +167,7 @@ _write_bin("mdls", FAKE_MDLS)
 }))
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from diskhealth import alerts, apps, brew, caches, config, db, jobs, scanner, server  # noqa: E402
+from diskhealth import alerts, apps, brew, caches, config, db, gitrepos, jobs, scanner, server, util  # noqa: E402
 
 
 def _mkfile(p: Path, size: int = 64 * 1024) -> Path:
@@ -178,6 +187,80 @@ def _wait_job(jid, timeout=30):
 
 
 # ---------------------------------------------------------------- brew
+class DirIdentityTest(unittest.TestCase):
+    """util's inode-based directory helpers.
+
+    A path string does not identify a directory. On macOS's default case-insensitive volume
+    ~/projects and ~/Projects are one folder, and os.path.realpath() does not say so: it
+    resolves symlinks, never letter case. De-duplicating roots by realpath therefore kept both
+    spellings, and the Git panel listed (and du-ed) every clone twice.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.base = OUTSIDE / "ident"
+        (cls.base / "projects" / "repo").mkdir(parents=True, exist_ok=True)
+        (cls.base / "other").mkdir(exist_ok=True)
+        cls.ci = os.path.isdir(cls.base / "PROJECTS")   # case-insensitive volume?
+
+    def test_same_dir_sees_through_spelling(self):
+        p = str(self.base / "projects")
+        self.assertTrue(util.same_dir(p, p + "/"))
+        self.assertTrue(util.same_dir(p, str(self.base / "." / "projects")))
+        self.assertFalse(util.same_dir(p, str(self.base / "other")))
+        self.assertFalse(util.same_dir(p, str(self.base / "missing")))
+
+    def test_is_under_uses_inodes_not_prefixes(self):
+        base, proj = str(self.base), str(self.base / "projects")
+        self.assertTrue(util.is_under(proj, base))
+        self.assertTrue(util.is_under(str(self.base / "projects" / "repo"), base))
+        self.assertTrue(util.is_under(base, base))                       # a root contains itself
+        self.assertFalse(util.is_under(base, proj))
+        self.assertFalse(util.is_under(str(OUTSIDE), proj))
+        # a sibling whose *name* starts with the root's name is not inside it
+        (self.base.parent / (self.base.name + "-sibling")).mkdir(exist_ok=True)
+        self.assertFalse(util.is_under(str(self.base.parent / (self.base.name + "-sibling")), base))
+
+    def test_is_under_follows_a_symlinked_path(self):
+        link = self.base / "link-to-projects"
+        if not link.exists():
+            link.symlink_to(self.base / "projects")
+        self.assertTrue(util.is_under(str(link / "repo"), str(self.base / "projects")))
+
+    def test_dedupe_dirs_collapses_case_variants(self):
+        if not self.ci:
+            self.skipTest("case-sensitive filesystem")
+        both = [str(self.base / "projects"), str(self.base / "Projects")]
+        self.assertTrue(all(os.path.isdir(p) for p in both), "both spellings resolve on this volume")
+        self.assertNotEqual(os.path.realpath(both[0]), os.path.realpath(both[1]),
+                            "realpath does not canonicalise case -- this is why realpath dedup failed")
+        self.assertEqual(util.dedupe_dirs(both), both[:1])
+
+    def test_dedupe_dirs_keeps_distinct_dirs_and_drops_missing(self):
+        d = util.dedupe_dirs([str(self.base / "projects"), str(self.base / "other"),
+                              str(self.base / "nope"), ""])
+        self.assertEqual(d, [str(self.base / "projects"), str(self.base / "other")])
+
+    def test_scan_roots_drops_nested_roots(self):
+        sibling = OUTSIDE.parent / "ident-sibling"
+        sibling.mkdir(exist_ok=True)
+        roots = util.scan_roots([str(self.base), str(self.base / "projects"), str(sibling)])
+        self.assertIn(str(self.base), roots)
+        self.assertNotIn(str(self.base / "projects"), roots)   # nested in base
+        self.assertIn(str(sibling), roots)
+        # the outer root wins however the list is ordered
+        self.assertEqual(util.scan_roots([str(self.base / "projects"), str(self.base)]), [str(self.base)])
+
+    def test_git_and_toolchain_roots_are_listed_once(self):
+        """The regression itself: both default roots exist on a case-insensitive volume."""
+        if not self.ci:
+            self.skipTest("case-sensitive filesystem")
+        (HOME / "projects").mkdir(exist_ok=True)
+        self.assertTrue(os.path.isdir(HOME / "Projects"), "both spellings must resolve")
+        self.assertEqual(len(gitrepos.roots()), len(set(util.dir_key(r) for r in gitrepos.roots())))
+        self.assertEqual(len(gitrepos.roots()), 1)
+
+
 class BrewTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -377,6 +460,29 @@ class CachesTest(unittest.TestCase):
         caches.clean("brew", log=lambda *_: None)  # clean="cmd" via the fake brew
         self.assertEqual(list((c / "Homebrew").iterdir()), [])
 
+    def test_protected_folders_are_matched_by_inode_not_by_name(self):
+        """A protected folder must stay protected however its path is spelled.
+
+        The check used to compare realpath() strings. On a case-insensitive volume
+        "~/documents" and "~/Documents" are the same folder but different strings, so a
+        user-supplied extra_caches entry in the wrong case would have been emptied.
+        """
+        docs = HOME / "Documents"
+        docs.mkdir(exist_ok=True)
+        self.assertEqual(caches._safe_target(str(docs)), "is a protected folder")
+        self.assertEqual(caches._safe_target(str(docs) + "/"), "is a protected folder")
+        self.assertEqual(caches._safe_target(str(HOME / "." / "Documents")), "is a protected folder")
+        if os.path.isdir(HOME / "documents"):      # case-insensitive volume
+            self.assertEqual(caches._safe_target(str(HOME / "documents")), "is a protected folder")
+            self.assertEqual(caches._safe_target(str(HOME / "DOCUMENTS")), "is a protected folder")
+        # the home folder itself, and anything outside it, are refused too
+        self.assertEqual(caches._safe_target(str(HOME)), "is outside your home folder")
+        self.assertEqual(caches._safe_target(str(OUTSIDE)), "is outside your home folder")
+        # a real cache folder underneath a protected one is still allowed
+        ok = HOME / "Library" / "Caches" / "some-tool"
+        ok.mkdir(parents=True, exist_ok=True)
+        self.assertIsNone(caches._safe_target(str(ok)))
+
     def test_parse_size(self):
         self.assertEqual(caches._parse_size("1.2GB (45%)"), int(1.2e9 / 1024))
         self.assertEqual(caches._parse_size("12kB"), int(12000 / 1024))
@@ -549,7 +655,8 @@ class ServerTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.httpd.shutdown()
 
-    def req(self, method, path, body=None, host=None, headers=None):
+    def raw_req(self, method, path, body=None, host=None, headers=None):
+        """(status, headers, body bytes)."""
         c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
         h = {"Host": host or f"127.0.0.1:{self.port}"}
         h.update(headers or {})
@@ -559,11 +666,16 @@ class ServerTest(unittest.TestCase):
         c.request(method, path, body=data, headers=h)
         r = c.getresponse()
         raw = r.read()
+        status, hdrs = r.status, dict(r.getheaders())
         c.close()
+        return status, hdrs, raw
+
+    def req(self, method, path, body=None, host=None, headers=None):
+        status, _h, raw = self.raw_req(method, path, body, host, headers)
         try:
-            return r.status, json.loads(raw)
+            return status, json.loads(raw)
         except ValueError:
-            return r.status, raw
+            return status, raw
 
     def test_daemon_threads(self):
         self.assertTrue(self.httpd.daemon_threads)
@@ -616,8 +728,78 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(self.req("POST", "/api/reveal", {"path": 5}, headers=auth)[0], 400)
         self.assertEqual(self.req("POST", "/api/reveal", {"path": str(HOME)}, headers=auth)[0], 200)
 
+    # ---------------------------------------------------------------- security
+    def test_security_headers_on_every_response(self):
+        for path in ("/api/status", "/nope"):
+            _code, h, _b = self.raw_req("GET", path)
+            self.assertEqual(h.get("X-Content-Type-Options"), "nosniff", path)
+            self.assertEqual(h.get("Referrer-Policy"), "no-referrer", path)
+            self.assertEqual(h.get("Cross-Origin-Resource-Policy"), "same-origin", path)
+
+    def test_csp_nonce_matches_the_inline_script(self):
+        if not self.has_web:
+            self.skipTest("web/index.html not present")
+        code, h, body = self.raw_req("GET", "/")
+        self.assertEqual(code, 200)
+        csp = h["Content-Security-Policy"]
+        self.assertNotIn("'unsafe-inline'", csp.split("script-src")[1].split(";")[0])
+        m = re.search(r"script-src [^;]*'nonce-([\w-]+)'", csp)
+        self.assertIsNotNone(m, csp)
+        html = body.decode()
+        self.assertIn(f'<script nonce="{m.group(1)}">', html)
+        self.assertNotIn("__DH_NONCE__", html)
+        self.assertNotIn("__DH_TOKEN__", html)
+
+    def test_nonce_differs_per_response(self):
+        if not self.has_web:
+            self.skipTest("web/index.html not present")
+        seen = {self.raw_req("GET", "/")[1]["Content-Security-Policy"] for _ in range(3)}
+        self.assertEqual(len(seen), 3)
+
+    def test_post_rejects_cross_site_fetch_metadata(self):
+        auth = {"X-DH-Token": self.token}
+        for site in ("cross-site", "same-site"):
+            code, _ = self.req("POST", "/api/run", {"action": "scan"},
+                               headers=dict(auth, **{"Sec-Fetch-Site": site}))
+            self.assertEqual(code, 403, site)
+        # same-origin, and a non-browser client sending neither header, are both allowed
+        code, _ = self.req("POST", "/api/reveal", {"path": str(HOME)},
+                           headers=dict(auth, **{"Sec-Fetch-Site": "same-origin"}))
+        self.assertEqual(code, 200)
+        self.assertEqual(self.req("POST", "/api/reveal", {"path": str(HOME)}, headers=auth)[0], 200)
+
+
+    def test_keepalive_survives_a_rejected_request(self):
+        """A rejection must not leave an unread body to be parsed as the next request."""
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+        host = f"127.0.0.1:{self.port}"
+        body = json.dumps({"action": "scan"}).encode()
+        c.request("POST", "/api/run", body=body,
+                  headers={"Host": host, "Content-Type": "application/json", "X-DH-Token": "wrong"})
+        r = c.getresponse()
+        self.assertEqual(r.status, 403)
+        r.read()
+        c.close()
+        # a fresh connection still speaks a clean protocol
+        self.assertEqual(self.req("GET", "/api/status")[0], 200)
+
+    def test_keepalive_reuses_one_connection(self):
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+        for _ in range(3):
+            c.request("GET", "/api/status", headers={"Host": f"127.0.0.1:{self.port}"})
+            r = c.getresponse()
+            self.assertEqual(r.status, 200)
+            r.read()
+            self.assertFalse(r.will_close, "connection should stay open for the next poll")
+        c.close()
+
 
 def tearDownModule():
+    # Close the shared connection BEFORE the file disappears. The connection is a module-level
+    # singleton in diskhealth.db, so leaving it open on a deleted file made every later test
+    # module in the same process fail with "attempt to write a readonly database".
+    from diskhealth import db
+    db.close()
     shutil.rmtree(TMP, ignore_errors=True)
 
 

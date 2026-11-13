@@ -145,7 +145,7 @@ build_launcher() {
     say "Using the prebuilt launcher"
   else
     command -v cc >/dev/null 2>&1 || die "no C compiler: run xcode-select --install, then re-run ./install.sh"
-    cc -O2 -Wall -o "$LAUNCHER" "$src"
+    cc -O2 -Wall -Wextra -o "$LAUNCHER" "$src"
   fi
   cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

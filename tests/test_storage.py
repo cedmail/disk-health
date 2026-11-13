@@ -11,15 +11,11 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from datetime import datetime
 from pathlib import Path
 
-if "diskhealth" not in sys.modules:  # standalone run: isolate HOME and data before importing diskhealth
-    _T = Path(tempfile.mkdtemp(prefix="dh-st-"))
-    (_T / "home").mkdir()
-    (_T / "data").mkdir()
-    os.environ["HOME"] = str(_T / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(_T / "data")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diskhealth import config, db, trash  # noqa: E402
@@ -144,11 +140,14 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("storage")
     # Inside `unittest discover` another module may delete its data dir: use a private database file.
     with db._lock:
         _saved.update(conn=db._conn, path=config.DB_PATH)
         db._conn = None
-        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-storage-db-")) / "db.sqlite3"
+        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-storage-db-")).resolve() / "db.sqlite3"
 
 
 def tearDownModule():
@@ -162,7 +161,7 @@ class StorageTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.old_env = {k: os.environ.get(k) for k in ("HOME", "PATH")}
-        cls.tmp = Path(tempfile.mkdtemp(prefix="dh-st-"))
+        cls.tmp = Path(tempfile.mkdtemp(prefix="dh-st-")).resolve()
         cls.home, cls.bin = cls.tmp / "home", cls.tmp / "bin"
         cls.home.mkdir()
         cls.bin.mkdir()

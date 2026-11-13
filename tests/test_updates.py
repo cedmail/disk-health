@@ -12,15 +12,11 @@ import sys
 import tempfile
 import threading
 import unittest
+
+from tests import _env
 from pathlib import Path
 from unittest import mock
 
-if "diskhealth" not in sys.modules:
-    _T = Path(tempfile.mkdtemp(prefix="dh-up-"))
-    (_T / "home").mkdir()
-    (_T / "data").mkdir()
-    os.environ["HOME"] = str(_T / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(_T / "data")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diskhealth import config, db  # noqa: E402
@@ -30,10 +26,13 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("updates")
     with db._lock:
         _saved.update(conn=db._conn, path=config.DB_PATH)
         db._conn = None
-        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-updates-db-")) / "db.sqlite3"
+        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-updates-db-")).resolve() / "db.sqlite3"
 
 
 def tearDownModule():
@@ -51,7 +50,7 @@ def git(cwd, *args):
 
 class GitModeTests(unittest.TestCase):
     def setUp(self):
-        t = Path(tempfile.mkdtemp(prefix="dh-up-git-"))
+        t = Path(tempfile.mkdtemp(prefix="dh-up-git-")).resolve()
         self.origin, self.clone = t / "origin", t / "clone"
         self.origin.mkdir()
         git(self.origin, "init", "-q", "-b", "main")
@@ -117,7 +116,7 @@ class UrlModeTests(unittest.TestCase):
         cls.srv.shutdown()
 
     def setUp(self):
-        self.noproj = Path(tempfile.mkdtemp(prefix="dh-up-zip-"))
+        self.noproj = Path(tempfile.mkdtemp(prefix="dh-up-zip-")).resolve()
         self.p = [mock.patch.object(up, "PROJECT_DIR", self.noproj), mock.patch.object(up, "__version__", "1.0.0")]
         for p in self.p:
             p.start()
@@ -154,7 +153,7 @@ class UrlModeTests(unittest.TestCase):
 
 class BrewModeTests(unittest.TestCase):
     def setUp(self):
-        t = Path(tempfile.mkdtemp(prefix="dh-up-brew-"))
+        t = Path(tempfile.mkdtemp(prefix="dh-up-brew-")).resolve()
         self.cellar = t / "Cellar/disk-health/1.0.0/libexec"
         self.cellar.mkdir(parents=True)
         (self.cellar / "VERSION").write_text("1.0.0\n")

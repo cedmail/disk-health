@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hmac
 import json
+import secrets
 import os
 import sys
 import threading
@@ -13,7 +14,7 @@ from urllib.parse import parse_qs, urlparse
 import re
 
 from . import __version__, version_on_disk, alerts, apps, brew, caches, config, db, features, gitrepos, jobs, progress, scanner, trash
-from .util import IS_MAC, human, run
+from .util import IS_MAC, human, is_under, run
 
 
 # ------------------------------------------------------------------ tasks
@@ -281,19 +282,46 @@ REVEAL_ROOTS = ("/Applications", "/Library", "/opt/homebrew", "/usr/local")
 
 
 def _reveal_allowed(p: str) -> bool:
+    """May `open -R <p>` be run? Only for something that exists inside one of the known roots.
+
+    Containment is tested by inode (util.is_under), not by string prefix: a prefix test is fooled
+    by case differences on a case-insensitive volume and by a symlinked parent.
+    """
     if not isinstance(p, str) or not p.startswith("/") or "\0" in p:
         return False
-    p = os.path.normpath(p)
-    roots = tuple(r for r in (str(config.HOME), config.brew_prefix()) + REVEAL_ROOTS if r and r != "/")
-    return any(p == r or p.startswith(r.rstrip("/") + "/") for r in roots) and os.path.lexists(p)
+    if not os.path.lexists(p):
+        return False
+    roots = [r for r in (str(config.HOME), config.brew_prefix()) + REVEAL_ROOTS if r and r != "/"]
+    return any(is_under(p, r) for r in roots)
+
+
+# Sent on every response. The dashboard is same-origin only and embeds nothing, so these
+# can all be set to their strictest value.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",            # no MIME sniffing of /static or API JSON
+    "Referrer-Policy": "no-referrer",               # never leak local paths in a Referer
+    "Cross-Origin-Opener-Policy": "same-origin",
+    "Cross-Origin-Resource-Policy": "same-origin",  # another origin cannot read our responses
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), interest-cohort=()",
+}
 
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "disk-health"
+    # HTTP/1.1 keep-alive: the dashboard polls /api/progress once a second and the extension
+    # polls /api/status, so reusing the connection removes a TCP handshake per poll. Every
+    # response therefore MUST carry an accurate Content-Length (see _json) and every early
+    # return MUST close the connection (see _err), or the next request desynchronises.
+    protocol_version = "HTTP/1.1"
     timeout = 60  # drop idle/slow connections
 
     def log_message(self, fmt, *args):  # quiet
         pass
+
+    def end_headers(self):
+        for k, v in SECURITY_HEADERS.items():
+            self.send_header(k, v)
+        super().end_headers()
 
     # -- helpers
     def _host_ok(self) -> bool:
@@ -307,10 +335,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        if self.close_connection:
+            self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(body)
 
     def _err(self, code: int, msg: str):
+        # Close the connection on every rejection. Most rejections happen before the request body
+        # has been read, and on a keep-alive connection those unread bytes would be parsed as the
+        # next request line. Closing is also the right signal: the client got nothing useful.
+        self.close_connection = True
         self._json({"error": msg}, code)
 
     # -- GET
@@ -321,13 +355,21 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(u.query).items()}
         try:
             if u.path in ("/", "/index.html"):
-                html = (config.WEB_DIR / "index.html").read_text().replace("__DH_TOKEN__", config.token())
+                # Per-response nonce: the dashboard's one inline <script> carries it, so script-src
+                # no longer needs 'unsafe-inline' and an injected <script> cannot run. Styles keep
+                # 'unsafe-inline' because a nonce does not cover inline style attributes.
+                nonce = secrets.token_urlsafe(16)
+                html = (config.WEB_DIR / "index.html").read_text()
+                html = html.replace("__DH_TOKEN__", config.token()).replace("__DH_NONCE__", nonce)
                 body = html.encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
-                self.send_header("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-                                 "script-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
+                self.send_header("Content-Security-Policy",
+                                 "default-src 'self'; style-src 'self' 'unsafe-inline'; "
+                                 f"script-src 'self' 'nonce-{nonce}'; img-src 'self' data:; "
+                                 "connect-src 'self'; base-uri 'none'; form-action 'none'; "
+                                 "object-src 'none'; frame-ancestors 'none'")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -387,10 +429,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if not self._host_ok():
             return self._err(403, "bad host")
-        origin = self.headers.get("Origin")
         port = self.server.server_address[1]
-        if origin and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in (f"http://127.0.0.1:{port}", f"http://localhost:{port}"):
             return self._err(403, "bad origin")
+        # Browsers that send Sec-Fetch-Site must say the request is same-origin. A browser always
+        # sends Origin on POST, so "neither header" means a non-browser client (curl, a script):
+        # those are allowed, because the X-DH-Token check below is what actually protects them and
+        # a web page cannot attach that header cross-origin (it forces a preflight we never answer).
+        site = self.headers.get("Sec-Fetch-Site")
+        if site is not None and site != "same-origin":
+            return self._err(403, "cross-site request")
         if not hmac.compare_digest(self.headers.get("X-DH-Token", "").encode(), config.token().encode()):
             return self._err(403, "bad token")
         try:

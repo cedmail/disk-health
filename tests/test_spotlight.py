@@ -8,15 +8,11 @@ import os
 import sys
 import tempfile
 import unittest
+
+from tests import _env
 from pathlib import Path
 from unittest import mock
 
-if "diskhealth" not in sys.modules:
-    _T = Path(tempfile.mkdtemp(prefix="dh-sp-"))
-    (_T / "home").mkdir()
-    (_T / "data").mkdir()
-    os.environ["HOME"] = str(_T / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(_T / "data")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diskhealth import config, db  # noqa: E402
@@ -35,11 +31,14 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("spotlight")
     # Inside `unittest discover` another module may delete its data dir: use a private database file.
     with db._lock:
         _saved.update(conn=db._conn, path=config.DB_PATH)
         db._conn = None
-        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-spotlight-db-")) / "db.sqlite3"
+        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-spotlight-db-")).resolve() / "db.sqlite3"
 
 
 def tearDownModule():
@@ -51,7 +50,7 @@ def tearDownModule():
 
 class SpotlightTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="dh-sp-t-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="dh-sp-t-")).resolve()
         self.home = self.tmp / "home"
         for d in (".m2/repository", ".npm/_cacache", ".gradle/caches"):
             (self.home / d).mkdir(parents=True)

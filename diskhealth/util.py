@@ -67,6 +67,77 @@ def have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
+# --- directory identity -------------------------------------------------------
+# A path string does not identify a directory. macOS volumes are case-insensitive by
+# default, so ~/projects and ~/Projects are the SAME folder, and os.path.realpath()
+# does not tell you so: it resolves symlinks, never letter case. Only (st_dev, st_ino)
+# identifies a directory. Everything below compares inodes for that reason.
+
+def dir_key(path: str) -> tuple[int, int] | None:
+    """(st_dev, st_ino) of `path`, or None if it can't be stat'ed. Symlinks are followed."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
+def same_dir(a: str, b: str) -> bool:
+    """True if both paths name the same directory, whatever the spelling."""
+    ka = dir_key(a)
+    return ka is not None and ka == dir_key(b)
+
+
+def is_under(path: str, root: str, _max_depth: int = 128) -> bool:
+    """True if `path` is `root` or lives inside it.
+
+    Walks `path`'s ancestors comparing inodes instead of comparing strings, so it is
+    immune to case differences, trailing slashes, `..` and symlinked parents.
+    """
+    rkey = dir_key(root)
+    if rkey is None:
+        return False
+    cur = os.path.realpath(path)
+    for _ in range(_max_depth):
+        k = dir_key(cur)
+        if k is not None and k == rkey:
+            return True
+        parent = os.path.dirname(cur)
+        if parent == cur:
+            return False
+        cur = parent
+    return False
+
+
+def dedupe_dirs(paths) -> list[str]:
+    """Keep the first spelling of each distinct existing directory, in order.
+
+    Collapses ~/projects and ~/Projects (one folder, two spellings) to one entry, which
+    plain string or realpath de-duplication does not do on a case-insensitive volume.
+    """
+    seen: set[tuple[int, int]] = set()
+    out: list[str] = []
+    for p in paths:
+        if not p or not os.path.isdir(p):
+            continue
+        k = dir_key(p)
+        if k is None or k in seen:
+            continue
+        seen.add(k)
+        out.append(p)
+    return out
+
+
+def drop_nested_dirs(roots: list[str]) -> list[str]:
+    """Remove any root that lives inside another root (inode-based containment)."""
+    return [r for r in roots if not any(o is not r and is_under(r, o) and not same_dir(r, o) for o in roots)]
+
+
+def scan_roots(paths) -> list[str]:
+    """Normalise a list of configured scan roots: existing dirs, de-duplicated, un-nested."""
+    return drop_nested_dirs(dedupe_dirs(paths))
+
+
 def parse_du(out: str) -> dict[str, int]:
     """Parse `du -k` output ("<kb>\\t<path>" per line) into {path: kb}; ignores error lines."""
     res: dict[str, int] = {}

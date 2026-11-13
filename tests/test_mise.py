@@ -8,15 +8,11 @@ import os
 import sys
 import tempfile
 import unittest
+
+from tests import _env
 from pathlib import Path
 from unittest import mock
 
-if "diskhealth" not in sys.modules:
-    _T = Path(tempfile.mkdtemp(prefix="dh-mise-"))
-    (_T / "home").mkdir()
-    (_T / "data").mkdir()
-    os.environ["HOME"] = str(_T / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(_T / "data")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diskhealth import config, db  # noqa: E402
@@ -50,10 +46,13 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("mise")
     with db._lock:
         _saved.update(conn=db._conn, path=config.DB_PATH)
         db._conn = None
-        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-mise-db-")) / "db.sqlite3"
+        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-mise-db-")).resolve() / "db.sqlite3"
 
 
 def tearDownModule():
@@ -70,7 +69,7 @@ def mkver(p: Path, kb: int = 8):
 
 class MiseTests(unittest.TestCase):
     def setUp(self):
-        t = Path(tempfile.mkdtemp(prefix="dh-mise-t-"))
+        t = Path(tempfile.mkdtemp(prefix="dh-mise-t-")).resolve()
         self.home = t / "home"
         inst = self.home / ".local/share/mise/installs"
         for v in ("node/20.10.0", "node/18.0.0", "java/temurin-21.0.5+11.0.LTS", "maven/3.9.9"):

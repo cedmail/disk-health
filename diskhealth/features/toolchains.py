@@ -14,7 +14,7 @@ import time
 from pathlib import Path
 
 from .. import config, db, jobs, progress, trash
-from ..util import DeleteTracker, du_kb, have, human, move_to_trash, run_out
+from ..util import DeleteTracker, du_kb, have, human, move_to_trash, run_out, scan_roots
 
 NAME = "toolchains"
 KEY = "toolchains"
@@ -108,13 +108,9 @@ def project_roots() -> list[str]:
     if not roots:
         from .. import caches
         roots = [config.expand(r) for r in caches.PROJECT_ROOTS if os.path.isdir(config.expand(r))]
-    seen, out = set(), []
-    for r in roots:
-        rp = os.path.realpath(r)
-        if rp not in seen:
-            seen.add(rp)
-            out.append(r)
-    return out
+    # Inode-based: ~/projects and ~/Projects are one folder on a case-insensitive volume, so a
+    # realpath dedupe kept both and every pin was counted twice ("Pinned by 2 projects").
+    return scan_roots(roots)
 
 
 def _nvm_lts(name: str) -> str:

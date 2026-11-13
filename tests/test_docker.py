@@ -10,23 +10,13 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
 # ---------------------------------------------------------------- environment (before importing diskhealth)
-# diskhealth.config reads HOME / DISK_HEALTH_DATA once at import. Share test_engine's environment when it is
-# around (unittest discover imports both modules in one process), else set up our own temp dirs.
-if "diskhealth" not in sys.modules:
-    try:
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        import test_engine  # noqa: F401,E402  (sets HOME, DISK_HEALTH_DATA, PATH, imports diskhealth)
-    except Exception:
-        _tmp = Path(tempfile.mkdtemp(prefix="dh-docker-"))
-        (_tmp / "home").mkdir()
-        (_tmp / "data").mkdir()
-        os.environ["HOME"] = str(_tmp / "home")
-        os.environ["DISK_HEALTH_DATA"] = str(_tmp / "data")
 sys.path.insert(0, str(ROOT))
 
 from diskhealth import db  # noqa: E402
@@ -264,9 +254,15 @@ def write_fake(bin_dir: Path) -> Path:
     return p
 
 
+def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("docker")
+
+
 class DockerTestBase(unittest.TestCase):
     def setUp(self):
-        self.tmp = Path(tempfile.mkdtemp(prefix="dh-dk-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="dh-dk-")).resolve()
         self.bin = self.tmp / "bin"
         write_fake(self.bin)
         self.home = self.tmp / "home"

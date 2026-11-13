@@ -18,7 +18,8 @@ import time
 from pathlib import Path
 
 from . import config, db, progress
-from .util import DeleteTracker, du_kb, have, human, parse_du, remove_contents, remove_path, run, run_out, stream
+from .util import (DeleteTracker, du_kb, have, human, is_under, parse_du, remove_contents, remove_path, run,
+                   run_out, same_dir, stream)
 
 REGISTRY: list[dict] = [
     # --- package managers
@@ -163,14 +164,19 @@ _PROTECTED = ["~", "~/Library", "~/Library/Application Support", "~/Library/Cont
 
 
 def _safe_target(p: str) -> str | None:
-    """Return None if `p` may be emptied, else the reason it may not."""
+    """Return None if `p` may be emptied, else the reason it may not.
+
+    Both checks compare inodes, not path strings. macOS volumes are case-insensitive by
+    default, so an `extra_caches` entry spelled "~/documents" names exactly the same folder
+    as "~/Documents" while comparing unequal as text: a string-based protected-folder check
+    fails *open* and would empty the user's Documents.
+    """
     if os.path.islink(p):
         return "is a symlink (not followed)"
-    real = os.path.realpath(p)
-    home = os.path.realpath(str(config.HOME))
-    if not real.startswith(home + "/"):
+    home = str(config.HOME)
+    if same_dir(p, home) or not is_under(p, home):
         return "is outside your home folder"
-    if real in {os.path.realpath(config.expand(x)) for x in _PROTECTED}:
+    if any(same_dir(p, config.expand(x)) for x in _PROTECTED):
         return "is a protected folder"
     return None
 

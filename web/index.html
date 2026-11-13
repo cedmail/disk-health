@@ -384,7 +384,7 @@ dialog ul { padding-left: 18px; font-family: var(--mono); font-size: 12px; }
 <dialog id="confirm"><div class="dh" id="cfTitle"></div><div class="db" id="cfBody"></div>
   <div class="df"><button id="cfCancel">Cancel</button><button class="primary" id="cfOk">Confirm</button></div></dialog>
 
-<script>
+<script nonce="__DH_NONCE__">
 const TOKEN = "__DH_TOKEN__";
 const $ = (s, el = document) => el.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));

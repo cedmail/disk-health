@@ -53,7 +53,7 @@ printf '%s\n' "$VERSION" > "$STAGE/RELEASE"
 
 echo "==> Launcher"
 if [ "$(uname -s)" = "Darwin" ] && command -v cc >/dev/null 2>&1; then
-  cc -O2 -Wall -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 \
+  cc -O2 -Wall -Wextra -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 \
      -o "$STAGE/launcher/DiskHealth" launcher/launcher.c
   shasum -a 256 launcher/launcher.c | cut -d' ' -f1 > "$STAGE/launcher/DiskHealth.sha256"
   echo "Built universal launcher ($(lipo -archs "$STAGE/launcher/DiskHealth" 2>/dev/null || echo ?))"

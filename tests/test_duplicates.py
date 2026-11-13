@@ -2,8 +2,7 @@
 
     python3 -m unittest tests.test_duplicates -v
 
-Works alone or inside `unittest discover`: when another test module already set HOME / DISK_HEALTH_DATA and
-imported diskhealth, it reuses them (diskhealth reads them once, at import) and only adds its own sub-folder.
+Runs alone or under `unittest discover`: `_env.use()` gives this module its own HOME and data folder.
 """
 from __future__ import annotations
 
@@ -13,6 +12,8 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,16 +23,11 @@ dup = db = W = None
 
 def setUpModule():
     global dup, db, W
-    if "diskhealth" not in sys.modules:
-        tmp = Path(tempfile.mkdtemp(prefix="dh-dup-"))
-        (tmp / "home").mkdir()
-        (tmp / "data").mkdir()
-        os.environ["HOME"] = str(tmp / "home")
-        os.environ["DISK_HEALTH_DATA"] = str(tmp / "data")
+    _env.use("duplicates")
     from diskhealth import db as _db
     from diskhealth.features import duplicates as _dup
     dup, db = _dup, _db
-    W = Path(tempfile.mkdtemp(prefix="dup-work-", dir=os.environ["HOME"]))
+    W = Path(tempfile.mkdtemp(prefix="dup-work-", dir=os.environ["HOME"])).resolve()
 
 
 def tearDownModule():

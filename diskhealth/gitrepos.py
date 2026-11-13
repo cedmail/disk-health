@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from . import config, db, progress
-from .util import du_kb, human, move_to_trash, run_out, stream
+from .util import du_kb, human, move_to_trash, run_out, scan_roots, stream
 
 DEFAULT_ROOTS = ["~/projects", "~/Projects", "~/dev", "~/git", "~/github", "~/GitHub", "~/IdeaProjects", "~/src",
                  "~/work", "~/code", "~/Documents/GitHub", "~/Developer"]
@@ -27,17 +27,11 @@ def _git(repo: str, *args: str, timeout: int = 30) -> tuple[int, str]:
 
 
 def roots() -> list[str]:
+    # scan_roots() de-duplicates by inode, not by path string: ~/projects and ~/Projects are the
+    # same folder on a case-insensitive volume, and os.path.isdir() is true for both spellings,
+    # so a realpath-based dedupe used to keep both and list (and du) every clone twice.
     cfg = config.load()
-    rs = [config.expand(r) for r in cfg.get("git_roots") or DEFAULT_ROOTS]
-    real, out = set(), []
-    for r in rs:
-        if os.path.isdir(r):
-            rp = os.path.realpath(r)
-            if rp not in real:  # ~/projects and ~/Projects are the same folder on macOS
-                real.add(rp)
-                out.append(r)
-    # Drop roots nested in another root.
-    return [r for r in out if not any(o != r and os.path.realpath(r).startswith(os.path.realpath(o) + "/") for o in out)]
+    return scan_roots(config.expand(r) for r in cfg.get("git_roots") or DEFAULT_ROOTS)
 
 
 def find_repos(max_depth: int = 5) -> list[str]:

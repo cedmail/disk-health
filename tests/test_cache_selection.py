@@ -2,8 +2,7 @@
 
     python3 -m unittest tests.test_cache_selection -v
 
-Works alone or inside `unittest discover` (reuses HOME / DISK_HEALTH_DATA when another test module set them first);
-it removes its ~/.m2 and ~/.gradle fixtures afterwards so other cache tests see a clean home.
+Runs alone or under `unittest discover`: `_env.use()` gives this module its own HOME and data folder.
 """
 from __future__ import annotations
 
@@ -13,6 +12,8 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -22,12 +23,7 @@ DAY = 86400
 
 def setUpModule():
     global caches, db, HOME
-    if "diskhealth" not in sys.modules:
-        tmp = Path(tempfile.mkdtemp(prefix="dh-sel-"))
-        (tmp / "home").mkdir()
-        (tmp / "data").mkdir()
-        os.environ["HOME"] = str(tmp / "home")
-        os.environ["DISK_HEALTH_DATA"] = str(tmp / "data")
+    _env.use("cache_selection")
     from diskhealth import caches as _c, db as _db
     caches, db, HOME = _c, _db, Path(os.environ["HOME"])
 

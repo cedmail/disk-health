@@ -10,14 +10,10 @@ import sys
 import tempfile
 import time
 import unittest
+
+from tests import _env
 from pathlib import Path
 
-if "diskhealth" not in sys.modules:  # standalone run: isolate HOME and data before importing diskhealth
-    _T = Path(tempfile.mkdtemp(prefix="dh-tc-"))
-    (_T / "home").mkdir()
-    (_T / "data").mkdir()
-    os.environ["HOME"] = str(_T / "home")
-    os.environ["DISK_HEALTH_DATA"] = str(_T / "data")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from diskhealth import config, db, trash  # noqa: E402
@@ -125,11 +121,14 @@ _saved = {}
 
 
 def setUpModule():
+    # Own HOME + data folder for this module. Must happen here, not at import: unittest
+    # discover imports every test module before running any, so the last import would win.
+    _env.use("toolchains")
     # Inside `unittest discover` another module may delete its data dir: use a private database file.
     with db._lock:
         _saved.update(conn=db._conn, path=config.DB_PATH)
         db._conn = None
-        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-toolchains-db-")) / "db.sqlite3"
+        config.DB_PATH = Path(tempfile.mkdtemp(prefix="dh-toolchains-db-")).resolve() / "db.sqlite3"
 
 
 def tearDownModule():
@@ -143,7 +142,7 @@ class ToolchainsTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.old_env = {k: os.environ.get(k) for k in ("HOME", "PATH")}
-        cls.tmp = Path(tempfile.mkdtemp(prefix="dh-tc-"))
+        cls.tmp = Path(tempfile.mkdtemp(prefix="dh-tc-")).resolve()
         cls.home, cls.bin, cls.jvm = cls.tmp / "home", cls.tmp / "bin", cls.tmp / "JavaVirtualMachines"
         cls.home.mkdir()
         cls.bin.mkdir()
@@ -222,7 +221,7 @@ class ToolchainsTest(unittest.TestCase):
         self.assertEqual(tc._num("1.8.0_292"), "8.0.292")
 
     def test_pin_file_parsing(self):
-        d = Path(tempfile.mkdtemp())
+        d = Path(tempfile.mkdtemp()).resolve()
         (d / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "1.72.0"\n')
         self.assertEqual(tc.parse_pin_file(d / "rust-toolchain.toml"), [("rust", "1.72.0")])
         (d / ".tool-versions").write_text("python 3.11.4 3.10.1\ngolang 1.21 # comment\nunknown 1\n")
