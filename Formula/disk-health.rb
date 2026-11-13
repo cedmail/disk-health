@@ -7,13 +7,13 @@
 # make-release.sh --tag rewrites the url/tag/revision lines below for each release.
 class DiskHealth < Formula
   desc "Keep a Mac disk healthy: growth, caches, unused apps, Homebrew & mise, in a local dashboard"
-  homepage "https://github.com/OWNER/disk-health"
-  url "https://github.com/OWNER/disk-health.git",
+  homepage "https://github.com/cedmail/disk-health"
+  url "https://github.com/cedmail/disk-health.git",
       using:    :git,
       tag:      "v1.2.0",
-      revision: "0000000000000000000000000000000000000000"
+      revision: "5d6464aa4e2318bdb384575008ba53262499e9b8"
   license "MIT"
-  head "https://github.com/OWNER/disk-health.git", branch: "main"
+  head "https://github.com/cedmail/disk-health.git", branch: "main"
 
   depends_on :macos
 
